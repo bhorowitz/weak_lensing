@@ -1,0 +1,8 @@
+#set(CMAKE_BUILD_TYPE DEBUG)
+set(COSMOPP_DIR $ENV{HOME}/code/hmc_cosmo_pp/install)
+set(FFTW_DIR $ENV{HOME}/programs/fftw-install)
+
+#lapack
+set(LAPACK_LIB_FLAGS "-framework Accelerate")
+
+add_definitions(-DVERBOSE1 -DCREATE_LOG -DCHECKS_ON)
