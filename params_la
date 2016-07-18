@@ -1,0 +1,16 @@
+N = 16
+L = 64
+b = 1.0
+out_iters = true
+hmc = false
+flux = true
+fourier = false
+random_start = false
+many = false
+seed = 100
+noise_frac = 0.01
+test_derivs = true
+conjugate_gradient = false
+epsilon = 1e-8
+more_thuente = true
+lbfgs_m = 100
