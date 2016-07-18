@@ -1,4 +1,5 @@
 #include <vector>
+#include <complex>
 
 #include <macros.hpp>
 
@@ -15,7 +16,9 @@ int main()
     std::vector<double> back(n);
 
     fftw_plan fwdPlan = fftw_plan_dft_r2c_1d(n, &(in[0]), out, FFTW_ESTIMATE);
+    check(fwdPlan, "");
     fftw_plan backPlan = fftw_plan_dft_c2r_1d(n, out, &(back[0]), FFTW_PRESERVE_INPUT | FFTW_ESTIMATE);
+    check(backPlan, "");
 
     fftw_execute(fwdPlan);
     fftw_execute(backPlan);
@@ -35,5 +38,15 @@ int main()
     fftw_destroy_plan(fwdPlan);
     fftw_destroy_plan(backPlan);
     fftw_free(out);
+
+    const int N = 2;
+    std::vector<std::complex<double> > c(N * (N / 2 + 1), std::complex<double>(1, 1));
+    std::vector<double> x(N * N);
+    fftw_plan backPlan2 = fftw_plan_dft_c2r_2d(N, N, reinterpret_cast<fftw_complex*>(&(c[0])), &(x[0]), FFTW_ESTIMATE);
+    check(backPlan2, "");
+    fftw_execute(backPlan2);
+    fftw_destroy_plan(backPlan2);
+    output_screen(x[0] << '\t' << x.back() << std::endl);
+
     return 0;
 }

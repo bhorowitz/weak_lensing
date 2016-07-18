@@ -19,57 +19,34 @@
 #include <hmc_general.hpp>
 #include <cosmo_mpi.hpp>
 
-/*
-#ifdef COSMO_OMP
-#include <omp.h>
-#endif
-*/
-
 #include <fftw3.h>
+
+#include "lyman_alpha.hpp"
+#include "power_spectrum.hpp"
 
 namespace
 {
-
-void generateModes(const std::vector<double>& pk, std::vector<std::complex<double> > *deltaK, double L = 1, int seed = 0)
-{
-    check(!pk.empty(), "");
-    check(L > 0, "");
-
-    if(seed == 0)
-        seed = std::time(0);
-
-    const size_t n = pk.size();
-    deltaK->clear();
-
-    Math::GaussianGenerator g(seed, 0, 1);
-    for(int i = 0; i < n / 2 + 1; ++i)
-    {
-        check(pk[i] >= 0, "");
-        const double re = g.generate() * std::sqrt(L * pk[i] / 2);
-        const double im = g.generate() * std::sqrt(L * pk[i] / 2);
-        deltaK->push_back(std::complex<double>(re, im));
-    }
-}
 
 // -2ln(like)
 class NLLike : public Math::RealFunctionMultiDim
 {
 public:
-    NLLike(const std::vector<double>& delta, const std::vector<double>& sigma, const std::vector<double>& ps) : delta_(delta), sigma_(sigma), ps_(ps)
+    NLLike(LymanAlpha *la, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& ps, bool isFlux) : la_(la), data_(data), sigma_(sigma), ps_(ps), isFlux_(isFlux)
     {
-        check(!delta_.empty(), "");
-        check(delta_.size() == sigma_.size(), "");
-        check(ps_.size() == delta_.size(), "");
+        check(!data_.empty(), "");
+        check(data_.size() == sigma_.size(), "");
+        check(ps_.size() == data_.size(), "");
     }
 
     virtual double evaluate(const std::vector<double>& x) const
     {
-        check(x.size() == delta_.size(), "");
+        check(x.size() == ps_.size(), "");
+        la_->reset(x);
         double res = 0;
-        for(int i = 0; i < x.size(); ++i)
+        for(int i = 0; i < data_.size(); ++i)
         {
-            const double xLN = std::exp(x[i]) - 1;
-            const double d = xLN - delta_[i];
+            const double y = (isFlux_ ? la_->getTau()[i] : la_->getDeltaNonLin()[i]);
+            const double d = y - data_[i];
             const double s = sigma_[i];
             check(s > 0, "");
             res += d * d / (s * s);
@@ -90,32 +67,50 @@ public:
     }
 
 private:
-    const std::vector<double> delta_, sigma_, ps_;
+    LymanAlpha * const la_;
+    const std::vector<double> data_, sigma_, ps_;
+    const bool isFlux_;
 };
 
 class NLLikeGrad : public Math::RealFunctionMultiToMulti
 {
 public:
-    NLLikeGrad(const std::vector<double>& delta, const std::vector<double>& sigma, const std::vector<double>& ps) : delta_(delta), sigma_(sigma), ps_(ps)
+    NLLikeGrad(LymanAlpha *la, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& ps, bool isFlux) : la_(la), data_(data), sigma_(sigma), ps_(ps), isFlux_(isFlux)
     {
-        check(!delta_.empty(), "");
-        check(delta_.size() == sigma_.size(), "");
-        check(ps_.size() == delta_.size(), "");
+        check(!data_.empty(), "");
+        check(data_.size() == sigma_.size(), "");
+        check(ps_.size() == data_.size(), "");
     }
 
     virtual void evaluate(const std::vector<double>& x, std::vector<double> *res) const
     {
-        check(x.size() == delta_.size(), "");
+        check(x.size() == ps_.size(), "");
         res->resize(x.size());
+
+        la_->reset(x);
 
         for(int i = 0; i < x.size(); ++i)
         {
-            const double xLN = std::exp(x[i]) - 1;
-            const double d = xLN - delta_[i];
-            const double s = sigma_[i];
-            check(s > 0, "");
-
-            res->at(i) = 2 * d * std::exp(x[i]) / (s * s);
+            if(isFlux_)
+            {
+                res->at(i) = 0;
+                for(int j = 0; j < data_.size(); ++j)
+                {
+                    const double y = la_->getTau()[j];
+                    const double d = y - data_[j];
+                    const double s = sigma_[j];
+                    check(s > 0, "");
+                    res->at(i) += 2 * d * la_->tauDeriv(j, i) / (s * s);
+                }
+            }
+            else
+            {
+                const double y = la_->getDeltaNonLin()[i];
+                const double d = y - data_[i];
+                const double s = sigma_[i];
+                check(s > 0, "");
+                res->at(i) = 2 * d * la_->deltaDeriv(i) / (s * s);
+            }
 
             // add prior
             res->at(i) += 2 * x[i] / ps_[i];
@@ -123,10 +118,12 @@ public:
     }
 
 private:
-    const std::vector<double> delta_, sigma_, ps_;
+    LymanAlpha * const la_;
+    const std::vector<double> data_, sigma_, ps_;
+    const bool isFlux_;
 };
 
-void lbfgsCallbackFunc(int iter, double f, double gradNorm, const std::vector<double>& x)
+void lbfgsCallbackFunc(int iter, double f, double gradNorm, const std::vector<double>& x, const std::vector<double>& g, const std::vector<double>& z)
 {
     std::stringstream fileName;
     fileName << "lbfgs_iters";
@@ -293,7 +290,7 @@ int main(int argc, char *argv[])
     int N = 32;
     const double L = 1;
 
-    output_screen("Specify N as an argument or else it will be 32 by default. Specify \"out\" as an argument to write the iterations into a file. Specify \"hmc\" as an argument to run hmc instead of lbfgs." << std::endl);
+    output_screen("Specify N as an argument or else it will be 32 by default. Specify \"flux\" as an argument to use the flux data instead of the density data. Specify \"out\" as an argument to write the iterations into a file. Specify \"hmc\" as an argument to run hmc instead of lbfgs." << std::endl);
 
     if(argc > 1)
     {
@@ -309,12 +306,15 @@ int main(int argc, char *argv[])
 
     bool outIters = false;
     bool hmc = false;
+    bool flux = false;
     for(int i = 1; i < argc; ++i)
     {
         if(std::string(argv[i]) == std::string("out"))
             outIters = true;
         if(std::string(argv[i]) == std::string("hmc"))
             hmc = true;
+        if(std::string(argv[i]) == std::string("flux"))
+            flux = true;
     }
 
     int seed = 100 + 10 * CosmoMPI::create().processId();
@@ -344,7 +344,7 @@ int main(int argc, char *argv[])
     // generate modes directly in x space (overwrites the above)
     seed = 300;
     Math::GaussianGenerator gx(seed, 0, 1);
-    std::vector<double> px(N, 1.0);
+    std::vector<double> px(N, 0.0001);
 
     // let's make sure that we have the exact same thing with or without mpi
     for(int i = 0; i < N * CosmoMPI::create().processId(); ++i)
@@ -353,52 +353,56 @@ int main(int argc, char *argv[])
     for(int i = 0; i < N; ++i)
         deltaX[i] = std::sqrt(px[i]) * gx.generate();
 
-    // lognormal transform
-    std::vector<double> deltaXLN(N);
-    for(int i = 0; i < N; ++i)
-        deltaXLN[i] = std::exp(deltaX[i]) - 1;
+    LymanAlpha la(deltaX, 1.0, 0.01);
 
-    // sigmaX is deltaXLN / 10
-    std::vector<double> sigmaX(N);
+    // get data
+    const std::vector<double> data = (flux ? la.getTau() : la.getDeltaNonLin());
+
+    // sigma is data / 10
+    std::vector<double> sigma(N);
     for(int i = 0; i < N; ++i)
     {
-        sigmaX[i] = std::abs(deltaXLN[i]) / 10;
+        sigma[i] = std::abs(data[i]) / 10;
 
         // for whatever reason
-        if(sigmaX[i] == 0)
-            sigmaX[i] = 1;
+        if(sigma[i] == 0)
+            sigma[i] = 1;
     }
 
     // add noise
     const int noiseSeed = seed + 1;
     Math::GaussianGenerator gen(noiseSeed, 0, 1);
-    std::vector<double> deltaXLNNoisy(N);
+    std::vector<double> dataNoisy(N);
     //
     // let's make sure that we have the exact same thing with or without mpi
     for(int i = 0; i < N * CosmoMPI::create().processId(); ++i)
         gen.generate();
     for(int i = 0; i < N; ++i)
     {
-        deltaXLNNoisy[i] = deltaXLN[i] + gen.generate() * sigmaX[i];
+        dataNoisy[i] = data[i] + gen.generate() * sigma[i];
     }
 
     // likelihood and grad
-    NLLike like(deltaXLNNoisy, sigmaX, px);
-    NLLikeGrad likeGrad(deltaXLNNoisy, sigmaX, px);
+    NLLike like(&la, dataNoisy, sigma, px, flux);
+    NLLikeGrad likeGrad(&la, dataNoisy, sigma, px, flux);
 
     if(hmc)
     {
+        output_screen("HMC CURRENTLY NOT IMPLEMENTED! IT ACTUALLY IS BUT NEED TO UPDATE THE CODE TO USE THE NEW INTERFACE!" << std::endl);
+        /*
         std::vector<double> mass(N);
         for(int i = 0; i < N; ++i)
         {
-            const double xErr = sigmaX[i] / (deltaXLNNoisy[i] + 1);
+            const double xErr = sigma[i] / (dataNoisy[i] + 1);
             mass[i] = 1.0 / (xErr * xErr) * N * CosmoMPI::create().numProcesses();
+            mass[i] = 1.0 / (xErr * xErr);
         }
-        const int burnin = 100;
+        const int burnin = 2000;
+        const int hmcSeed = 1000;
         NLLikeHMCTraits hmcTraits(N, like, likeGrad, mass, burnin);
         Timer timer("HMC");
         timer.start();
-        Math::HMCGeneral<NLLikeHMCTraits> hmcGen(&hmcTraits, 1.0, 10);
+        Math::HMCGeneral<NLLikeHMCTraits> hmcGen(&hmcTraits, 0.05, 20, hmcSeed);
         hmcGen.run(10000000);
         timer.end();
 
@@ -448,8 +452,8 @@ int main(int argc, char *argv[])
             {
                 const double x = xMin + j * d;
                 const double y = std::exp(x) - 1;
-                const double dy = (y - deltaXLNNoisy[i]);
-                const double f = std::exp(-x * x / (2 * px[i]) - dy * dy / (2 * sigmaX[i] * sigmaX[i]));
+                const double dy = (y - dataNoisy[i]);
+                const double f = std::exp(-x * x / (2 * px[i]) - dy * dy / (2 * sigma[i] * sigma[i]));
                 cumul[j] = cumul[j - 1] + f * d;
             }
             const double norm = cumul[n];
@@ -462,13 +466,15 @@ int main(int argc, char *argv[])
             outHMCPost << i << '\t' << median << '\t' << l1 << '\t' << u1 << '\t' << l2 << '\t' << u2 << '\t' << realMed << '\t' << realL1 << '\t' << realU1 << '\t' << realL2 << '\t' << realU2 << '\t' << std::endl;
         }
         outHMCPost.close();
+        */
     }
     else
     {
-        Math::LBFGS lbfgs(N, like, likeGrad, 100);
         std::vector<double> x(N, 0);
         const double epsilon = 1e-10;
         const double gradTol = 1e-5 * N * CosmoMPI::create().numProcesses();
+
+        Math::LBFGS lbfgs(N, like, likeGrad, x, 100);
 
         if(outIters)
         {
@@ -495,7 +501,10 @@ int main(int argc, char *argv[])
             output_screen("Function mimimum is: " << funcMin << std::endl);
         }
 
-        // write deltaX, deltaXLN, deltaXLNNoisy, and x into a file
+        la.reset(x);
+        const std::vector<double> predictedData = (flux ? la.getTau() : la.getDeltaNonLin());
+
+        // write deltaX, data, dataNoisy, x, and predictedData into a file
         std::stringstream deltaFileName;
         deltaFileName << "delta_x";
         if(CosmoMPI::create().numProcesses() > 1)
@@ -503,7 +512,7 @@ int main(int argc, char *argv[])
         deltaFileName << ".txt";
         std::ofstream out(deltaFileName.str().c_str());
         for(int i = 0; i < N; ++i)
-            out << i << '\t' << deltaX[i] << '\t' << deltaXLN[i] << '\t' << deltaXLNNoisy[i] << '\t' << x[i] << std::endl;
+            out << i << '\t' << deltaX[i] << '\t' << data[i] << '\t' << dataNoisy[i] << '\t' << x[i] << '\t' << predictedData[i] << std::endl;
         out.close();
     }
 
