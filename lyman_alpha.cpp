@@ -659,7 +659,7 @@ LymanAlpha3::calculateV()
     for(int i = 0; i < N1_ * N2_ * N3_; ++i)
         vDeriv_[i] /= (N1_ * N2_ * N3_);
 
-    const double factor = 0.5; // growth factor, approx (Omega_m)^0.55
+    const double factor = growthFactor(); // growth factor, approx (Omega_m)^0.55
     for(int i = 0; i < N1_ * N2_ * N3_; ++i)
     {
         v_[i] *= factor;
@@ -821,10 +821,52 @@ LymanAlpha3::tauDeriv(int m1, int m2, int m3, int n1, int n2, int n3)
     return res * tauFactor_;
 }
 
+double LymanAlpha3::tauDerivV(int m1, int m2, int m3, int k)
+{
+    check(m1 >= 0 && m1 < N1_, "");
+    check(m2 >= 0 && m2 < N2_, "");
+    check(m3 >= 0 && m3 < N3_, "");
+    check(k >= 0 && k < N3_, "");
+
+    if(!tauDerivsCalculated_)
+        calculateTauDerivs();
+
+    return tauDerivsV_[m1 * N2_ + m2][m3][k] * tauFactor_;
+}
+
+double LymanAlpha3::tauDerivDeltaOnly(int m1, int m2, int m3, int k)
+{
+    check(m1 >= 0 && m1 < N1_, "");
+    check(m2 >= 0 && m2 < N2_, "");
+    check(m3 >= 0 && m3 < N3_, "");
+    check(k >= 0 && k < N3_, "");
+
+    if(!tauDerivsCalculated_)
+        calculateTauDerivs();
+
+    return tauDerivsDeltaX_[m1 * N2_ + m2][m3][k] * tauFactor_;
+}
+
 double LymanAlpha3::fluxDeriv(int m1, int m2, int m3, int n1, int n2, int n3)
 {
     if(!fluxCalculated_)
         calculateFlux();
 
     return -flux_[(m1 * N2_ + m2) * N3_ + m3] * tauDeriv(m1, m2, m3, n1, n2, n3);
+}
+
+double LymanAlpha3::fluxDerivV(int m1, int m2, int m3, int k)
+{
+    if(!fluxCalculated_)
+        calculateFlux();
+
+    return -flux_[(m1 * N2_ + m2) * N3_ + m3] * tauDerivV(m1, m2, m3, k);
+}
+
+double LymanAlpha3::fluxDerivDeltaOnly(int m1, int m2, int m3, int k)
+{
+    if(!fluxCalculated_)
+        calculateFlux();
+
+    return -flux_[(m1 * N2_ + m2) * N3_ + m3] * tauDerivDeltaOnly(m1, m2, m3, k);
 }

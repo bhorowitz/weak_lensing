@@ -32,7 +32,7 @@ namespace
 class LBFGSFunction3
 {
 public:
-    LBFGSFunction3(int N1, int N2, int N3, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& pk, double L1, double L2, double L3, double b, bool useFlux = false) : N1_(N1), N2_(N2), N3_(N3), data_(data), sigma_(sigma), pk_(pk), L1_(L1), L2_(L2), L3_(L3), la_(N1, N2, N3, std::vector<double>(data.size()), L1, L2, L3, b), useFlux_(useFlux)
+    LBFGSFunction3(int N1, int N2, int N3, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& pk, double L1, double L2, double L3, double b, bool useFlux = false) : N1_(N1), N2_(N2), N3_(N3), data_(data), sigma_(sigma), pk_(pk), L1_(L1), L2_(L2), L3_(L3), la_(N1, N2, N3, std::vector<double>(data.size()), L1, L2, L3, b), useFlux_(useFlux), temp_(N1 * N2 * N3)
     {
         check(N1 > 0, "");
         check(N2 > 0, "");
@@ -151,47 +151,149 @@ public:
             std::vector<double>& r = res->get();
             priorXDeriv(N1_, N2_, N3_, pk_, la_.getDelta(), L1_, L2_, L3_, &r, &deltaK_, &pkDeriv_);
             check(r.size() == N1_ * N2_ * N3_, "");
-            const int diffMax = std::min(N1_ / 2, 8);
-            for(int i = 0; i < N1_; ++i)
+            if(useFlux_)
             {
-                for(int j = 0; j < N2_; ++j)
+                for(int i = 0; i < N1_; ++i)
                 {
-                    for(int k = 0; k < N3_; ++k)
+                    for(int j = 0; j < N2_; ++j)
                     {
-                        if(useFlux_)
+                        for(int k = 0; k < N3_; ++k)
                         {
-                            for(int l1 = i - diffMax; l1 < i + diffMax; ++l1)
+                            double sum = 0;
+                            for(int l = 0; l < N3_; ++l)
                             {
-                                const int l = (l1 + N1_) % N1_;
-                                for(int m1 = j - diffMax; m1 < j + diffMax; ++m1)
-                                {
-                                    const int m = (m1 + N2_) % N2_;
-                                    for(int n = 0; n < N3_; ++n)
-                                    {
-                                        const double s = sigma_[(l * N2_ + m) * N3_ + n];
-                                        const double delta = la_.getFlux()[(l * N2_ + m) * N3_ + n] - data_[(l * N2_ + m) * N3_ + n];
-                                        r[(i * N2_ + j) * N3_ + k] += 2 * delta * la_.fluxDeriv(l, m, n, i, j, k) / (s * s);
-                                    }
-                                }
+                                const double s = sigma_[(i * N2_ + j) * N3_ + l];
+                                const double delta = la_.getFlux()[(i * N2_ + j) * N3_ + l] - data_[(i * N2_ + j) * N3_ + l];
+                                sum += 2 * delta / (s * s) * la_.fluxDerivV(i, j, l, k);
+                            }
+                            temp_[(i * N2_ + j) * N3_ + k] = sum;
+                        }
+                    }
+                }
+
+                // this is much faster than what we have below!
+                deltaX2deltaK(N1_, N2_, N3_, temp_, &buf_, 1, 1, 1);
+                for(int i = 0; i < N1_; ++i)
+                {
+                    const int iShifted = (i < (N1_ + 1) / 2 ? i : -(N1_ - i));
+                    const double k1 = 2 * Math::pi / L1_ * iShifted;
+                    for(int j = 0; j < N2_; ++j)
+                    {
+                        const int jShifted = (j < (N2_ + 1) / 2 ? j : -(N2_ - j));
+                        const double k2 = 2 * Math::pi / L2_ * jShifted;
+                        for(int k = 0; k < N3_ / 2 + 1; ++k)
+                        {
+                            int kShifted = (k < (N3_ + 1) / 2 ? k : -(N3_ - j));
+                            const double k3 = 2 * Math::pi / L3_ * kShifted;
+                            double kSq = k1 * k1 + k2 * k2 + k3 * k3;
+
+                            // just to avoid annoying division by 0 (doesn't matter)
+                            if(kSq == 0)
+                                kSq = 1.0;
+
+                            double factor = 1;
+                            if(k == N3_ / 2)
+                            {
+                                /*
+                                if(j > N2_ / 2)
+                                    factor = -1;
+                                else if(j == N2_ / 2 && i > N1_ / 2)
+                                    factor = -1;
+                                if((i == 0 || i == N1_ / 2) && (j == 0 || j == N2_ / 2))
+                                    factor = 0;
+                                */
+
+                                factor = 0;
                             }
 
-                            /*
-                            const int index = (i * N2_ + j) * N3_ + k;
-                            const double s = sigma_[index];
-                            const double delta = la_.getFlux()[index] - data_[index];
-                            const double d1 = 2 * delta * la_.deltaDeriv(index) * 0.02 * (1 + la_.getDeltaNonLin()[index]) / (s * s);
-                            const double d2 = 2 * delta * la_.fluxDeriv(i, j, k, i, j, k) / (s * s);
-
-                            //r[index] += d1;
-                            r[index] += d2;
-                            */
+                            buf_[(i * N2_ + j) * (N3_ / 2 + 1) + k] *= std::complex<double>(0, -factor * k3 / kSq);
                         }
-                        else
+                    }
+                }
+
+                deltaK2deltaX(N1_, N2_, N3_, buf_, &temp_, 1, 1, 1);
+
+                for(int i = 0; i < N1_ * N2_ * N3_; ++i)
+                    r[i] += temp_[i] * la_.growthFactor() * la_.deltaDeriv(i);
+                
+                // this is much slower than above 
+                /*
+                for(int i = 0; i < N1_; ++i)
+                {
+                    for(int j = 0; j < N2_; ++j)
+                    {
+                        for(int k = 0; k < N3_; ++k)
                         {
-                            const int index = (i * N2_ + j) * N3_ + k;
-                            const double s = sigma_[index];
-                            const double delta = la_.getDeltaNonLin()[index] - data_[index];
-                            r[index] += 2 * delta * la_.deltaDeriv(index) / (s * s);
+                            for(int l = 0; l < N1_; ++l)
+                            {
+                                for(int m = 0; m < N2_; ++m)
+                                {
+                                    for(int n = 0; n < N3_; ++n)
+                                        r[(i * N2_ + j) * N3_ + k] += temp_[(l * N2_ + m) * N3_ + n] * la_.vDeriv(l, m, n, i, j, k);
+                                }
+                            }
+                        }
+                    }
+                }
+                */
+
+                for(int i = 0; i < N1_; ++i)
+                {
+                    for(int j = 0; j < N2_; ++j)
+                    {
+                        for(int k = 0; k < N3_; ++k)
+                        {
+                            for(int l = 0; l < N3_; ++l)
+                            {
+                                const double s = sigma_[(i * N2_ + j) * N3_ + l];
+                                const double delta = la_.getFlux()[(i * N2_ + j) * N3_ + l] - data_[(i * N2_ + j) * N3_ + l];
+                                r[(i * N2_ + j) * N3_ + k] += 2 * delta / (s * s) * la_.fluxDerivDeltaOnly(i, j, l, k);
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for(int i = 0; i < N1_; ++i)
+                {
+                    for(int j = 0; j < N2_; ++j)
+                    {
+                        for(int k = 0; k < N3_; ++k)
+                        {
+                            if(useFlux_)
+                            {
+                                for(int l = 0; l < N1_; ++l)
+                                {
+                                    for(int m = 0; m < N2_; ++m)
+                                    {
+                                        for(int n = 0; n < N3_; ++n)
+                                        {
+                                            const double s = sigma_[(l * N2_ + m) * N3_ + n];
+                                            const double delta = la_.getFlux()[(l * N2_ + m) * N3_ + n] - data_[(l * N2_ + m) * N3_ + n];
+                                            r[(i * N2_ + j) * N3_ + k] += 2 * delta * la_.fluxDeriv(l, m, n, i, j, k) / (s * s);
+                                        }
+                                    }
+                                }
+
+                                /*
+                                const int index = (i * N2_ + j) * N3_ + k;
+                                const double s = sigma_[index];
+                                const double delta = la_.getFlux()[index] - data_[index];
+                                const double d1 = 2 * delta * la_.deltaDeriv(index) * 0.02 * (1 + la_.getDeltaNonLin()[index]) / (s * s);
+                                const double d2 = 2 * delta * la_.fluxDeriv(i, j, k, i, j, k) / (s * s);
+
+                                //r[index] += d1;
+                                r[index] += d2;
+                                */
+                            }
+                            else
+                            {
+                                const int index = (i * N2_ + j) * N3_ + k;
+                                const double s = sigma_[index];
+                                const double delta = la_.getDeltaNonLin()[index] - data_[index];
+                                r[index] += 2 * delta * la_.deltaDeriv(index) / (s * s);
+                            }
                         }
                     }
                 }
@@ -211,13 +313,14 @@ private:
     std::vector<double> deltaX_;
     std::vector<double> likeXDeriv_;
     std::vector<std::complex<double> > buf_;
+    std::vector<double> temp_;
     bool isComplex_;
 };
 
 class LBFGSCallback
 {
 public:
-    LBFGSCallback(const char *fileName, int N, double L, bool cg = false) : out_(fileName), N_(N), L_(L), cg_(cg)
+    LBFGSCallback(const char *fileName, int N1, int N2, int N3, double L1, double L2, double L3, bool cg = false) : out_(fileName), N1_(N1), N2_(N2), N3_(N3), L1_(L1), L2_(L2), L3_(L3), cg_(cg)
     {
         if(!out_)
         {
@@ -238,11 +341,14 @@ public:
 
         out_ << std::setprecision(10) << iter << "\t" << f << '\t' << gradNorm << std::endl;
 
+        if(!dumpIter(iter))
+            return;
+
         std::vector<double> deltaX = x.get();
         if(x.isComplex())
         {
             std::vector<std::complex<double> > deltaK = x.getComplex();
-            deltaK2deltaX(N_, N_, N_, deltaK, &deltaX, L_, L_, L_, NULL, true);
+            deltaK2deltaX(N1_, N2_, N3_, deltaK, &deltaX, L1_, L2_, L3_, NULL, true);
         }
         std::stringstream fileNameStr;
         if(cg_)
@@ -260,7 +366,7 @@ public:
             exc.set(exceptionStr);
             throw exc;
         }
-        out.write(reinterpret_cast<char*>(&(deltaX[0])), N_ * N_ * N_ * sizeof(double));
+        out.write(reinterpret_cast<char*>(&(deltaX[0])), N1_ * N2_ * N3_ * sizeof(double));
         out.close();
     }
 
@@ -270,8 +376,23 @@ public:
     }
 
 private:
-    const int N_;
-    const double L_;
+    bool dumpIter(int i) const
+    {
+        if(i < 100) return true;
+        if(i < 200)
+            return (i % 2 == 0);
+        if(i < 1000)
+            return (i % 10 == 0);
+        if(i < 10000)
+            return (i % 100 == 0);
+        if(i < 100000)
+            return (i % 1000 == 0);
+        return (i % 10000 == 0);
+    }
+
+private:
+    const int N1_, N2_, N3_;
+    const double L1_, L2_, L3_;
     std::ofstream out_;
     const bool cg_;
 };
@@ -405,6 +526,13 @@ int main(int argc, char *argv[])
             f.derivative(testDerivs.get());
             const unsigned long timer2Duration = timer2.end();
             output_screen("Function derivatives calculation took " << timer2Duration << " microseconds." << std::endl);
+
+            // temporary test
+            /*
+            vector2file("derivatives_testing.txt", testDerivs->get());
+            return 0;
+            */
+
             double epsilon = 0.01;
             if(isComplex)
             {
@@ -513,7 +641,7 @@ int main(int argc, char *argv[])
         MyCG cg(&factory, &f, *x);
 
         typedef Math::LBFGS_General<DeltaVector3, DeltaVector3Factory, LBFGSFunction3> MyLBFGS;
-        LBFGSCallback cb("chi2.txt", N, L);
+        LBFGSCallback cb("chi2.txt", N1, N2, N3, L1, L2, L3);
         MyLBFGS lbfgs(&factory, &f, *x, lbfgs_m, mtLineSearch);
 
         if(conjGrad)

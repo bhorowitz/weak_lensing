@@ -203,6 +203,20 @@ public:
     /// partial flux_(m1, m2, m3) / partial delta_(n1, n2, n3)
     double fluxDeriv(int m1, int m2, int m3, int n1, int n2, int n3);
 
+    /// partial tau_(m1, m2, m3) / partial v_(m1, m2, k)
+    double tauDerivV(int m1, int m2, int m3, int k);
+
+    /// partial tau_(m1, m2, m3) / partial delta_(m1, m2, k). NOTE: This excludes partial tau / partial v * partial v / partial delta
+    double tauDerivDeltaOnly(int m1, int m2, int m3, int k);
+
+    /// partial flux_(m1, m2, m3) / partial v_(m1, m2, k)
+    double fluxDerivV(int m1, int m2, int m3, int k);
+
+    /// partial flux_(m1, m2, m3) / partial delta_(m1, m2, k). NOTE: This excludes partial flux / partial v * partial v / partial delta
+    double fluxDerivDeltaOnly(int m1, int m2, int m3, int k);
+
+    static constexpr double growthFactor() { return 0.5; }
+
 private:
     void calculateV();
     void calculateTau();
