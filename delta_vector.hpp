@@ -35,32 +35,42 @@ public:
     // swap
     void swap(DeltaVector3& other);
 
+    std::vector<double>& extraParams() { return extraParams_; }
+    const std::vector<double>& extraParams() const { return extraParams_; }
+
 private:
     bool isComplex_;
     const int n1_, n2_, n3_;
     std::vector<double> x_;
     std::vector<std::complex<double> > c_;
+
+    std::vector<double> extraParams_;
 };
 
 class DeltaVector3Factory
 {
 public:
-    DeltaVector3Factory(int N1, int N2, int N3, bool isComplex) : N1_(N1), N2_(N2), N3_(N3), isComplex_(isComplex)
+    DeltaVector3Factory(int N1, int N2, int N3, bool isComplex, int extraParamsSize = 0, double extraParamVal = 0) : N1_(N1), N2_(N2), N3_(N3), isComplex_(isComplex), extraParamsSize_(extraParamsSize), extraParamVal_(extraParamVal)
     {
         check(N1_ > 0, "");
         check(N2_ > 0, "");
         check(N3_ > 0, "");
+        check(extraParamsSize_ >= 0, "");
     }
 
     // create a new DeltaVector with 0 elements
     // the user is in charge of deleting it
     DeltaVector3* giveMeOne()
     {
-        return new DeltaVector3(N1_, N2_, N3_, isComplex_);
+        auto res = new DeltaVector3(N1_, N2_, N3_, isComplex_);
+        res->extraParams().resize(extraParamsSize_, extraParamVal_);
+        return res;
     }
 private:
     const int N1_, N2_, N3_;
     const bool isComplex_;
+    const int extraParamsSize_;
+    const double extraParamVal_;
 };
 
 #endif

@@ -13,4 +13,4 @@ test_derivs = true
 conjugate_gradient = false
 epsilon = 1e-8
 more_thuente = true
-lbfgs_m = 100
+lbfgs_m = 1000

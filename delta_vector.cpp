@@ -23,6 +23,10 @@ DeltaVector3::copy(const DeltaVector3& other, double c)
     check(other.x_.size() == x_.size(), "");
     for(int i = 0; i < x_.size(); ++i)
         x_[i] = c * other.x_[i];
+
+    extraParams_.resize(other.extraParams_.size());
+    for(int i = 0; i < extraParams_.size(); ++i)
+        extraParams_[i] = other.extraParams_[i] * c;
 }
 
 void
@@ -33,6 +37,9 @@ DeltaVector3::setToZero()
 
     for(auto it = c_.begin(); it != c_.end(); ++it)
         *it = std::complex<double>(0, 0);
+
+    for(double& x : extraParams_)
+        x = 0;
 }
 
 double
@@ -71,6 +78,10 @@ DeltaVector3::dotProduct(const DeltaVector3& other) const
 #ifdef COSMO_MPI
     CosmoMPI::create().reduce(&res, &total, 1, CosmoMPI::DOUBLE, CosmoMPI::SUM);
 #endif
+
+    check(extraParams_.size() == other.extraParams_.size(), "");
+    for(int i = 0; i < extraParams_.size(); ++i)
+        total += extraParams_[i] * other.extraParams_[i];
     return total;
 }
 
@@ -89,6 +100,10 @@ DeltaVector3::add(const DeltaVector3& other, double c)
     check(other.x_.size() == x_.size(), "");
     for(int i = 0; i < x_.size(); ++i)
         x_[i] += c * other.x_[i];
+
+    check(extraParams_.size() == other.extraParams_.size(), "");
+    for(int i = 0; i < extraParams_.size(); ++i)
+        extraParams_[i] += c * other.extraParams_[i];
 }
 
 void
@@ -99,4 +114,7 @@ DeltaVector3::swap(DeltaVector3& other)
 
     check(other.x_.size() == x_.size(), "");
     x_.swap(other.x_);
+
+    check(extraParams_.size() == other.extraParams_.size(), "");
+    extraParams_.swap(other.extraParams_);
 }

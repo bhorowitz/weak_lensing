@@ -217,6 +217,8 @@ public:
 
     static constexpr double growthFactor() { return 0.5; }
 
+    void setTauFactor(double tauFactor) { tauFactor_ = tauFactor; }
+
 private:
     void calculateV();
     void calculateTau();
@@ -234,6 +236,12 @@ private:
         check(i >= 0, "");
         return i % N3_;
     }
+
+    /*
+    void calculateTauFactor();
+    double meanFlux() const;
+    double meanFluxDeriv() const;
+    */
 
 private:
     const double L1_, L2_, L3_;

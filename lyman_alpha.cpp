@@ -726,7 +726,8 @@ LymanAlpha3::calculateTau()
         }
     }
 
-    tauFactor_ = 0.1;
+    //calculateTauFactor();
+
     for(int i = 0; i < N1_ * N2_ * N3_; ++i)
         tau_[i] *= tauFactor_;
 
@@ -783,6 +784,50 @@ LymanAlpha3::calculateTauDerivs()
 
     tauDerivsCalculated_ = true;
 }
+
+/*
+void
+LymanAlpha3::calculateTauFactor()
+{
+    tauFactor_ = 1;
+    while(true)
+    {
+        const double f = meanFlux() - 0.8;
+        if(std::abs(f) < 1e-5)
+            return;
+
+        const double fPrime = meanFluxDeriv();
+
+        // means the field is 0 everywhere
+        if(fPrime == 0)
+            return;
+
+        tauFactor_ -= f / fPrime;
+        if(tauFactor_ < 0)
+            tauFactor_ = 0;
+    }
+}
+
+double
+LymanAlpha3::meanFlux() const
+{
+    double s = 0;
+    for(int i = 0; i < tau_.size(); ++i)
+        s += std::exp(-tauFactor_ * tau_[i]);
+
+    return s / tau_.size();
+}
+
+double
+LymanAlpha3::meanFluxDeriv() const
+{
+    double s = 0;
+    for(int i = 0; i < tau_.size(); ++i)
+        s -= tau_[i] * std::exp(-tauFactor_ * tau_[i]);
+
+    return s / tau_.size();
+}
+*/
 
 void
 LymanAlpha3::calculateFlux()

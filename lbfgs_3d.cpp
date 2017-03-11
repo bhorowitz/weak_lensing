@@ -32,7 +32,7 @@ namespace
 class LBFGSFunction3
 {
 public:
-    LBFGSFunction3(int N1, int N2, int N3, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& pk, double L1, double L2, double L3, double b, bool useFlux = false) : N1_(N1), N2_(N2), N3_(N3), data_(data), sigma_(sigma), pk_(pk), L1_(L1), L2_(L2), L3_(L3), la_(N1, N2, N3, std::vector<double>(data.size()), L1, L2, L3, b), useFlux_(useFlux), temp_(N1 * N2 * N3)
+    LBFGSFunction3(int N1, int N2, int N3, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& pk, double L1, double L2, double L3, double b, bool useFlux = false) : N1_(N1), N2_(N2), N3_(N3), data_(data), sigma_(sigma), pk_(pk), L1_(L1), L2_(L2), L3_(L3), la_(N1, N2, N3, std::vector<double>(data.size()), L1, L2, L3, b), useFlux_(useFlux), temp_(N1 * N2 * N3), tauFactor_(1)
     {
         check(N1 > 0, "");
         check(N2 > 0, "");
@@ -57,6 +57,13 @@ public:
 
     void set(const DeltaVector3& x)
     {
+        if(useFlux_)
+        {
+            check(!x.extraParams().empty(), "");
+            tauFactor_ = x.extraParams()[0];
+            la_.setTauFactor(tauFactor_);
+        }
+
         isComplex_ = x.isComplex();
         if(isComplex_)
         {
@@ -252,6 +259,17 @@ public:
                         }
                     }
                 }
+
+                // tau factor derivative
+                double tauFactorDeriv = 0;
+                for(int i = 0; i < data_.size(); ++i)
+                {
+                    const double s = sigma_[i];
+                    const double delta = la_.getFlux()[i] - data_[i];
+                    tauFactorDeriv -= 2 * delta / (s * s) * la_.getFlux()[i] * la_.getTau()[i] / tauFactor_;
+                }
+                res->extraParams().resize(1);
+                res->extraParams()[0] = tauFactorDeriv;
             }
             else
             {
@@ -315,6 +333,7 @@ private:
     std::vector<std::complex<double> > buf_;
     std::vector<double> temp_;
     bool isComplex_;
+    double tauFactor_;
 };
 
 class LBFGSCallback
@@ -435,6 +454,8 @@ int main(int argc, char *argv[])
         const double epsilon = parser.getDouble("epsilon", 1e-5);
         const int lbfgs_m = parser.getInt("lbfgs_m", 10);
 
+        const double tauFactor = 0.1;
+
         parser.dump();
 
         std::vector<int> bins;
@@ -470,6 +491,7 @@ int main(int argc, char *argv[])
         check(deltaX.size() == N1 * N2 * N3, "");
 
         LymanAlpha3 la(N1, N2, N3, deltaX, L1, L2, L3, b);
+        la.setTauFactor(tauFactor);
 
         std::vector<double> data = (flux ? la.getFlux() : la.getDeltaNonLin());
         std::vector<double> sigma(N1 * N2 * N3);
@@ -495,7 +517,7 @@ int main(int argc, char *argv[])
             data[i] += sigma[i] * g1.generate();
 
         // lbfgs stuff
-        DeltaVector3Factory factory(N1, N2, N3, isComplex);
+        DeltaVector3Factory factory(N1, N2, N3, isComplex, 1, 1.0);
         LBFGSFunction3 f(N1, N2, N3, data, sigma, pk, L1, L2, L3, b, flux);
 
         if(testDerivs)
@@ -513,6 +535,9 @@ int main(int argc, char *argv[])
                 testX->getComplex() = deltaKTest;
             else
                 testX->get() = deltaXTest;
+
+            testX->extraParams().resize(1);
+            testX->extraParams()[0] = 1.0;
 
             f.set(*testX);
             Timer timer1("TEST FUNCTION VALUE");
@@ -616,6 +641,16 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+
+            testX->extraParams()[0] += epsilon;
+            f.set(*testX);
+            const double pertVal = f.value();
+            const double numDeriv = (pertVal - testVal) / epsilon;
+            if(!Math::areEqual(numDeriv, testDerivs->extraParams()[0], 1e-1))
+            {
+                output_screen("PROBLEM: tau factor derivative. numerical derivative = " << numDeriv << ", analytic = " << testDerivs->extraParams()[0] << std::endl);
+            }
+
             output_screen("OK" << std::endl);
         }
 
@@ -633,6 +668,8 @@ int main(int argc, char *argv[])
             else
                 x->get() = deltaXStart;
         }
+
+        x->extraParams().resize(1, 1.0);
 
         const double gradTol = 1e-5 * N1 * N2 * N3 * CosmoMPI::create().numProcesses();
         double minVal = 0;
@@ -706,6 +743,7 @@ int main(int argc, char *argv[])
         }
 
         output_screen("MINIMUM VALUE FOUND = " << minVal << std::endl);
+        output_screen("Tau factor = " << x->extraParams()[0] << std::endl);
 
         vector2binFile("la_min3.dat", deltaXMin);
 
