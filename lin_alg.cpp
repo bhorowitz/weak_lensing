@@ -141,7 +141,7 @@ void ftMatrixFullWL(int N, double L, const Math::Matrix<double>& mat, Math::Matr
 
             std::complex<double> myOut = c2 * out1[i] + s2 * out2[i];
 
-            check(std::abs(std::imag(myOut)) < 1e-5, "");
+         //   check(std::abs(std::imag(myOut)) < 1e-5, "");
 
             (*res)(i, j) = std::real(myOut) / L4;
             if(resIm)

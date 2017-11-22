@@ -700,6 +700,15 @@ public:
         }
         out.write(reinterpret_cast<char*>(&(deltaX[0])), N_ * N_ * sizeof(double));
         out.close();
+        // Writing out PS
+        std::stringstream fileNameStr_ps;
+
+        std::vector<double> ps, psk;
+        power(N_, N_, L_, L_, deltaK, &psk, &ps);
+        std::stringstream psFileNameStr;
+        psFileNameStr << "lbfgs_ps_" << iter << ".txt";
+        vector2file(psFileNameStr.str().c_str(), ps);
+
     }
 
     void operator()(int iter, double f, double gradNorm, const DeltaKVector2& x, const DeltaKVector2& grad, const DeltaKVector2& z)
@@ -879,7 +888,7 @@ int main(int argc, char *argv[])
         const int NData = 512;
         const double LData = 1380;
         std::vector<float> rhoActualFloat(NData * NData);
-        std::ifstream inData("2dproj0-512x512.f4", std::ios::in | std::ios::binary);
+        std::ifstream inData("/global/homes/b/bhorowit/lyman_alpha/2dproj0-512x512.f4", std::ios::in | std::ios::binary);
         if(!inData)
         {
             std::string exceptionStr = "Cannot read the data file 2dproj0-512x512.f4";
@@ -927,8 +936,10 @@ int main(int argc, char *argv[])
 
         const int N = parser.getInt("N", 64);
         const double L = parser.getDouble("L", LData);
+        const int lin_lim = parser.getInt("lin_lim", 64);
         const bool dataIsOriginal = parser.getBool("data_original", false);
         const bool weakLensing = parser.getBool("weak_lensing", false);
+
 
         const int simCount = parser.getInt("sim_count", 1);
         const bool z2 = parser.getBool("z2", true);
@@ -960,6 +971,8 @@ int main(int argc, char *argv[])
         const double epsilonFactor = parser.getDouble("epsilon_factor", 0.1);
 
         const bool conjugateGrad = parser.getBool("conjugate_gradient", false);
+
+        const std::string loc = parser.getStr("file_prefix", "");
 
         parser.dump();
 
@@ -1244,7 +1257,7 @@ int main(int argc, char *argv[])
 
         func.setExtra(extraData, qSigma);
 
-        if(N <= 64)
+        if(N <= lin_lim)
             testFunctionDerivs(func, N, nExtra, pkFiducial, 1e-1, 300);
 
         // let's do lbfgs!
@@ -1931,7 +1944,7 @@ int main(int argc, char *argv[])
         vector2file("pk_chi2.txt", pkChi2);
 
 
-        if(N <= 64)
+        if(N <= lin_lim)
         {
             std::vector<std::complex<double> > wfk(N * (N / 2 + 1));
             std::vector<double> wfx(N * N);
