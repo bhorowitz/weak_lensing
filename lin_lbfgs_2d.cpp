@@ -700,7 +700,9 @@ public:
         }
         out.write(reinterpret_cast<char*>(&(deltaX[0])), N_ * N_ * sizeof(double));
         out.close();
-        // Writing out PS
+
+        // Writing out PS for each step
+
         std::stringstream fileNameStr_ps;
 
         std::vector<double> ps, psk;
@@ -885,19 +887,21 @@ int main(int argc, char *argv[])
         Parser parser(argv[1]);
 
         // let's first read the data file
+
         const int NData = 512;
         const double LData = 1380;
         std::vector<float> rhoActualFloat(NData * NData);
         std::ifstream inData("/global/homes/b/bhorowit/lyman_alpha/2dproj0-512x512.f4", std::ios::in | std::ios::binary);
         if(!inData)
         {
-            std::string exceptionStr = "Cannot read the data file 2dproj0-512x512.f4";
+            std::string exceptionStr = "Cannot read the data file 2dproj0-512x512.f4, currently looking in /global/homes/b/bhorowit/lyman_alpha/2dproj0-512x512.f4";
             exc.set(exceptionStr);
             throw exc;
         }
 
         inData.read(reinterpret_cast<char*>(&(rhoActualFloat[0])), NData * NData * sizeof(float));
         inData.close();
+
 
         std::vector<double> rhoActual(rhoActualFloat.begin(), rhoActualFloat.end());
         check(rhoActual.size() == NData * NData, "");
@@ -917,10 +921,16 @@ int main(int argc, char *argv[])
         for(int i = 0; i < NData * NData; ++i)
             deltaActual[i] = rhoActual[i] / rhoActualMean - 1;
 
+        //Actual background data
+
         vector2binFile("data_actual.dat", deltaActual);
+
+        //Fourier transform of field
 
         std::vector<std::complex<double> > deltaKActual(NData * (NData / 2 + 1));
         deltaX2deltaK(NData, NData, deltaActual, &deltaKActual, LData, LData);
+
+        //Find powerspectrum of field
 
         std::vector<double> kValsDataP, pValsDataP;
         power(NData, NData, LData, LData, deltaKActual, &kValsDataP, &pValsDataP);
@@ -933,6 +943,8 @@ int main(int argc, char *argv[])
         for(int i = 0; i < kValsDataP.size(); ++i)
             dataPS[kValsDataP[i]] = pValsDataP[i];
         writePSToFile("data_ps.txt", dataPS, 2 * Math::pi / LData, kMaxActual * 0.99);
+
+        //Inputs from parameter file
 
         const int N = parser.getInt("N", 64);
         const double L = parser.getDouble("L", LData);
@@ -972,12 +984,15 @@ int main(int argc, char *argv[])
 
         const bool conjugateGrad = parser.getBool("conjugate_gradient", false);
 
-        const std::string loc = parser.getStr("file_prefix", "");
+        //const std::string loc = parser.getStr("file_prefix", "");
+        const std::string mask_file = parser.getStr("mask_file", "mask.txt");
 
         parser.dump();
 
         if(doHMC)
             estimatePowerSpectrum = false;
+
+        // Calculating simple powerspectrum to use for lensing map.
 
         SimplePowerSpectrum2 simplePS(0.05, 100);
 
@@ -996,6 +1011,8 @@ int main(int argc, char *argv[])
 
         if(weakLensing)
             noiseVal *= 2;
+
+        //Find k values to use based on power spectrum
 
         std::vector<int> bins;
         std::vector<double> kBinVals;
@@ -1047,6 +1064,8 @@ int main(int argc, char *argv[])
         std::vector<double> deltaXLower;
         std::vector<std::complex<double> > deltaKLower;
 
+        //BEN: uncertain what this does....
+
         if(includeHigherPower)
         {
             nBinsHigher = powerSpectrumBins(NHigher, NHigher, L, L, &binsHigher, &kBinValsHigher);
@@ -1084,6 +1103,7 @@ int main(int argc, char *argv[])
         vector2file("delta_ps.txt", deltaPS);
 
         std::vector<double> sigmaNoise(N * N, noiseVal);
+
         // make the noise different in each pixel
         if(varyingNoise)
         {
@@ -1091,6 +1111,7 @@ int main(int argc, char *argv[])
             {
                 for(int j = 0; j < N; ++j)
                 {
+                    //currently a 2 x 4 grid of "bubbles" of noise
                     const double f1 = std::sin(2 * Math::pi * double(i) / N);
                     const double f2 = std::cos(4 * Math::pi * double(j) / N);
                     sigmaNoise[i * N + j] *= (f1 * f1 * f2 * f2 + 0.1);
@@ -1104,6 +1125,7 @@ int main(int argc, char *argv[])
         Math::GaussianGenerator noiseGen(noiseSeed, 0, 1);
         std::vector<double> noiseX(N * N);
         //double noiseXMean = 0;
+        //generate noise for each pixel
         for(int i = 0; i < N * N; ++i)
         {
             noiseX[i] = noiseGen.generate() * sigmaNoise[i];
@@ -1115,7 +1137,7 @@ int main(int argc, char *argv[])
         for(int i = 0; i < N * N; ++i)
             noiseX[i] -= noiseXMean;
         */
-
+        //add noise to each pixel
         std::vector<double> dataX(N * N);
         for(int i = 0; i < N * N; ++i)
             dataX[i] = deltaX[i] + noiseX[i];
@@ -1130,6 +1152,7 @@ int main(int argc, char *argv[])
             {
                 for(int j = 0; j < N; ++j)
                 {
+                    //circular mask pattern with center cutout
                     const int di = i - N / 2;
                     const int dj = j - N / 2;
                     if(di * di + dj * dj < (N / 8) * (N / 8))
@@ -1144,11 +1167,13 @@ int main(int argc, char *argv[])
 
             if(maskFromFile)
             {
-                std::ifstream in("mask.txt");
+                std::ifstream in(mask_file);
                 if(!in)
                 {
                     StandardException exc;
-                    exc.set("Cannot open input file mask.txt");
+                    std::stringstream exceptionStr;
+                    exceptionStr << "Cannot open mask file : " << mask_file;
+                    exc.set(exceptionStr.str());
                     throw exc;
                 }
                 for(int i = 0; i < N; ++i)
@@ -1260,7 +1285,7 @@ int main(int argc, char *argv[])
         if(N <= lin_lim)
             testFunctionDerivs(func, N, nExtra, pkFiducial, 1e-1, 300);
 
-        // let's do lbfgs!
+        // let's do lbfgs! (or other optimization routine!)
         DeltaKVector2 starting(N, N, nExtra);
         starting.setToZero();
         if(doHMC)
