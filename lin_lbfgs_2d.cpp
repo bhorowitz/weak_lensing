@@ -946,6 +946,8 @@ int main(int argc, char *argv[])
 
         //Inputs from parameter file
 
+        output_screen("Reading input parameters" << std::endl);
+
         const int N = parser.getInt("N", 64);
         const double L = parser.getDouble("L", LData);
         const int lin_lim = parser.getInt("lin_lim", 64);
@@ -1068,6 +1070,8 @@ int main(int argc, char *argv[])
 
         if(includeHigherPower)
         {
+            output_screen("Including higher power..." << std::endl);
+
             nBinsHigher = powerSpectrumBins(NHigher, NHigher, L, L, &binsHigher, &kBinValsHigher);
             pBinValsHigher.resize(nBinsHigher);
             for(int i = 0; i < nBinsHigher; ++i)
@@ -1209,6 +1213,8 @@ int main(int argc, char *argv[])
         DeltaK2Func func(N, N, dataX, sigmaNoise, mask, pkFiducial, L, L, weakLensing, &sigmaNoise, &dataGamma1, &dataGamma2);
         if(weakLensing)
         {
+            output_screen("Initializing WL data..." << std::endl);
+
             func.calculateWeakLensingData(deltaK, &dataGamma1, &dataGamma2);
             vector2binFile("data_gamma1.dat", dataGamma1);
             vector2binFile("data_gamma2.dat", dataGamma2);
@@ -1334,6 +1340,8 @@ int main(int argc, char *argv[])
         {
             LBFGSCallback cb("chi2.txt", N, L);
             lbfgsOrig.minimize(&deltaKMin, epsilon, gTol, 10000000, &cb);
+            output_screen("lbfgs minimized!" << std::endl);
+
         }
 
         std::vector<double> deltaXMin;
@@ -1477,6 +1485,9 @@ int main(int argc, char *argv[])
             lbfgs.setStarting(starting);
             lbfgs.minimize(&deltaKNoiseNew, epsilon, gTol, 10000000);
 
+            output_screen("lbfgs minimized (noise bias)!" << std::endl);
+
+
             noiseRealizations.push_back(deltaKNoiseNew.get());
 
             for(int i = 0; i < N * N; ++i)
@@ -1501,6 +1512,8 @@ int main(int argc, char *argv[])
             }
 
             // estimate it at EACH iteration
+            //output_screen("iter" << std::endl);
+
             std::vector<double> bEstimatedThisIter = bEstimated;
             for(int i = 0; i < nBins; ++i)
                 bEstimatedThisIter[i] /= (c + 1);
@@ -1521,6 +1534,8 @@ int main(int argc, char *argv[])
 
             if(fisherNew)
             {
+                output_screen("calculating fisher..." << std::endl);
+
                 generateDeltaK(N, N, pkFiducial, &deltaKFisherNew, seed++, &realBuffer);
                 deltaK2deltaX(N, N, deltaKFisherNew, &deltaXFisherNew, L, L, &complexBuffer, true);
 
@@ -1534,6 +1549,7 @@ int main(int argc, char *argv[])
 
                 lbfgs.setStarting(starting);
                 lbfgs.minimize(&deltaKFisherNewMin, epsilon, gTol, 10000000);
+                output_screen("lbfgs minimized! (fisher)" << std::endl);
 
 
                 // now add noise
@@ -1639,8 +1655,12 @@ int main(int argc, char *argv[])
             lbfgs.minimize(&deltaKSumMin, epsilon, gTol, 10000000);
             */
 
+            output_screen("flag 1" << std::endl);
+
+
             for(int b1 = 0; b1 < fisherBins.size(); ++b1)
             {
+                
                 const int l1 = fisherBins[b1];
 
                 const double p = fiducialBinVals[l1] * L * L;
@@ -1721,6 +1741,9 @@ int main(int argc, char *argv[])
                 }
             }
 
+            output_screen("flag 2" << std::endl);
+
+
             // estimating the fisher matrix at EACH iteration
             Math::Matrix<double> fisherEstThisIter = fisherEst;
 
@@ -1742,6 +1765,8 @@ int main(int argc, char *argv[])
                         fisherEstThisIter(l, l1) = 0;
                 }
             }
+
+            output_screen("flag 3" << std::endl);
 
             std::stringstream thisIterFileName;
             thisIterFileName << "fisher_est_" << c << ".txt";

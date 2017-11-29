@@ -1,6 +1,8 @@
-## Weak Lensing 
+# Weak Lensing 
 
-# Code developed by Grigor Aslayan and Benjamin Horowitz
+## Code developed by Grigor Aslayan and Benjamin Horowitz
+
+UNDER DEVELOPMENT!
 
 Utilities:
 
