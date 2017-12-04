@@ -895,10 +895,11 @@ int main(int argc, char *argv[])
 
         Parser parser(argv[1]);
 
-        // let's first read the data file
-
+        // let's first read the data files
+ 
         const int NData = 512;
         const double LData = 1380;
+        /**
         std::vector<float> rhoActualFloat(NData * NData);
         std::ifstream inData("/global/homes/b/bhorowit/lyman_alpha/2dproj0-512x512.f4", std::ios::in | std::ios::binary);
         if(!inData)
@@ -952,8 +953,10 @@ int main(int argc, char *argv[])
         for(int i = 0; i < kValsDataP.size(); ++i)
             dataPS[kValsDataP[i]] = pValsDataP[i];
         writePSToFile("data_ps.txt", dataPS, 2 * Math::pi / LData, kMaxActual * 0.99);
+    **/
 
         //Inputs from parameter file
+        Math::TableFunction<double, double> dataPS;
 
         output_screen("Reading input parameters" << std::endl);
 
@@ -961,7 +964,15 @@ int main(int argc, char *argv[])
         const double L = parser.getDouble("L", LData);
         const int lin_lim = parser.getInt("lin_lim", 64);
         const bool dataIsOriginal = parser.getBool("data_original", false);
-        const bool weakLensing = parser.getBool("weak_lensing", false);
+        const bool weakLensing = parser.getBool("weak_lensing", true);
+        
+        if(!weakLensing){
+                    StandardException exc;
+                    std::stringstream exceptionStr;
+                    exceptionStr << "Running shear_shear, need weak_lensing=true";
+                    exc.set(exceptionStr.str());
+                    throw exc;
+        }
 
 
         const int simCount = parser.getInt("sim_count", 1);
@@ -1032,7 +1043,7 @@ int main(int argc, char *argv[])
         const int nBins = powerSpectrumBins(N, N, L, L, &bins, &kBinVals);
         check(bins.size() == N * (N / 2 + 1), "");
         check(kBinVals.size() == nBins, "");
-        vector2file("k_bins.txt", kBinVals);
+     //   vector2file("k_bins.txt", kBinVals);
 
         std::vector<int> binsFull;
         const int nBinsFull = powerSpectrumBinsFull(N, N, L, L, &binsFull);
@@ -1041,7 +1052,7 @@ int main(int argc, char *argv[])
         std::vector<double> pBinVals(nBins);
         for(int i = 0; i < nBins; ++i)
             pBinVals[i] = psToUse->evaluate(kBinVals[i]);
-        vector2file("actual_ps.txt", pBinVals);
+      //  vector2file("actual_ps.txt", pBinVals);
 
         std::vector<double> pk;
         discretePowerSpectrum(N, N, L, L, bins, pBinVals, &pk);
@@ -1064,7 +1075,7 @@ int main(int argc, char *argv[])
         std::vector<std::complex<double> > deltaK;
         int seed = 100;
         generateDeltaK(N, N, pk, &deltaK, seed++, &realBuffer);
-
+/**
         // including power beyond k_max for aliasing
         const int NHigher = N * 2;
         std::vector<int> binsHigher;
@@ -1116,10 +1127,24 @@ int main(int argc, char *argv[])
         std::vector<double> deltaPS, deltaPSK;
         power(N, N, L, L, deltaK, &deltaPSK, &deltaPS);
         vector2file("delta_ps.txt", deltaPS);
-
+**/
         std::vector<double> sigmaNoise(N * N, noiseVal);
 
         // make the noise different in each pixel
+
+        //load noise from noise file...
+        std::ifstream inNoise("sigmax2.dat", std::ios::in | std::ios::binary);
+        if(!inNoise)
+        {
+            std::string exceptionStr = "Cannot read the data file sigmaNoise!";
+            exc.set(exceptionStr);
+            throw exc;
+        }
+
+        inNoise.read(reinterpret_cast<char*>(&(sigmaNoise[0])), NData * NData * sizeof(float));
+        inNoise.close();
+
+/**
         if(varyingNoise)
         {
             for(int i = 0; i < N; ++i)
@@ -1153,16 +1178,19 @@ int main(int argc, char *argv[])
             noiseX[i] -= noiseXMean;
         */
         //add noise to each pixel
+        /**
         std::vector<double> dataX(N * N);
         for(int i = 0; i < N * N; ++i)
             dataX[i] = deltaX[i] + noiseX[i];
 
         vector2binFile("datax2.dat", dataX);
-
+        **/
         std::vector<double> mask(N * N, 1);
         // mask out some stuff
         if(maskStuff)
         {
+            //shear-shear; always get mask from file!
+            /**
             for(int i = 0; i < N; ++i)
             {
                 for(int j = 0; j < N; ++j)
@@ -1179,6 +1207,7 @@ int main(int argc, char *argv[])
 
                 }
             }
+            **/
 
             if(maskFromFile)
             {
@@ -1220,10 +1249,26 @@ int main(int argc, char *argv[])
 
         vector2binFile("mask2.dat", mask);
 
+        std::vector<double> dataX(N * N);
+        
+        //read delta X (datax2)
+
+        std::ifstream inDataX("datax2.dat", std::ios::in | std::ios::binary);
+        if(!inDataX)
+        {
+            std::string exceptionStr = "Cannot read the data file datax2.dat!";
+            exc.set(exceptionStr);
+            throw exc;
+        }
+
+        inDataX.read(reinterpret_cast<char*>(&(dataX[0])), NData * NData * sizeof(double));
+        inDataX.close();
+
         std::vector<double> dataGamma1(N * N), dataGamma2(N * N);
         DeltaK2Func func(N, N, dataX, sigmaNoise, mask, pkFiducial, L, L, weakLensing, &sigmaNoise, &dataGamma1, &dataGamma2);
         if(weakLensing)
         {
+            /**
             output_screen("Initializing WL data..." << std::endl);
 
             func.calculateWeakLensingData(deltaK, &dataGamma1, &dataGamma2);
@@ -1237,6 +1282,35 @@ int main(int argc, char *argv[])
             vector2binFile("data_gamma1_noisy.dat", dataGamma1);
             vector2binFile("data_gamma2_noisy.dat", dataGamma2);
             func.setData(dataX, &dataGamma1, &dataGamma2);
+            **/
+                    //read gamma 1
+                    std::ifstream inGamma1("data_gamma1_noisy.dat", std::ios::in | std::ios::binary);
+                    if(!inGamma1)
+                    {
+                        std::string exceptionStr = "Cannot read the data file data_gamma1_noisy.dat!";
+                        exc.set(exceptionStr);
+                        throw exc;
+                    }
+
+                    inGamma1.read(reinterpret_cast<char*>(&(dataGamma1[0])), NData * NData * sizeof(double));
+                    inGamma1.close();
+
+
+                    //read gamma 2
+                    std::ifstream inGamma2("data_gamma2_noisy.dat", std::ios::in | std::ios::binary);
+                    if(!inGamma2)
+                    {
+                        std::string exceptionStr = "Cannot read the data file data_gamma2_noisy.dat!";
+                        exc.set(exceptionStr);
+                        throw exc;
+                    }
+
+                    inGamma2.read(reinterpret_cast<char*>(&(dataGamma2[0])), NData * NData * sizeof(double));
+                    inGamma2.close();
+
+
+                    func.setData(dataX, &dataGamma1, &dataGamma2);
+
         }
 
         const int nExtra = 0;
@@ -1394,6 +1468,7 @@ int main(int argc, char *argv[])
             check(l >= 0 && l < nBins, "");
             ++binCountHalf[l];
         }
+        int noiseSeed = 200;
 
         noiseSeed = 20000;
 
@@ -1462,7 +1537,7 @@ int main(int argc, char *argv[])
                 if(weakLensing)
                     noiseXNew1[i] *= sigmaNoise[i];
             }
-
+/**
             if(includeHigherPower)
             {
                 generateDeltaK(NHigher, NHigher, pkHigher, &deltaKHigher, noiseSeed++);
@@ -1491,7 +1566,7 @@ int main(int argc, char *argv[])
                         noiseXNew[i] += deltaXLower[i];
                 }
             }
-
+**/
             if(weakLensing)
                 func.setData(dataX, &noiseXNew, &noiseXNew1);
             else
