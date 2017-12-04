@@ -29,6 +29,9 @@
 
 #include <fftw3.h>
 
+#include <sys/stat.h>
+
+
 namespace
 {
 
@@ -1009,7 +1012,9 @@ int main(int argc, char *argv[])
         const bool conjugateGrad = parser.getBool("conjugate_gradient", false);
 
         //const std::string loc = parser.getStr("file_prefix", "");
-        const std::string mask_file = parser.getStr("mask_file", "mask.txt");
+        const std::string maskFile = parser.getStr("mask_file", "mask.txt");
+   //     const std::string inputDirectory = parser.getStr("input_directory", "./");
+   //     const std::string outputDirectory = parser.getStr("output_directory", "./");
 
         parser.dump();
 
@@ -1074,7 +1079,7 @@ int main(int argc, char *argv[])
 
         std::vector<std::complex<double> > deltaK;
         int seed = 100;
-        generateDeltaK(N, N, pk, &deltaK, seed++, &realBuffer);
+ //       generateDeltaK(N, N, pk, &deltaK, seed++, &realBuffer);
 /**
         // including power beyond k_max for aliasing
         const int NHigher = N * 2;
@@ -1141,8 +1146,10 @@ int main(int argc, char *argv[])
             throw exc;
         }
 
-        inNoise.read(reinterpret_cast<char*>(&(sigmaNoise[0])), NData * NData * sizeof(float));
+        inNoise.read(reinterpret_cast<char*>(&(sigmaNoise[0])), N * N * sizeof(double));
         inNoise.close();
+
+        vector2binFile("cl_sigmax2.dat", sigmaNoise);
 
 /**
         if(varyingNoise)
@@ -1211,12 +1218,12 @@ int main(int argc, char *argv[])
 
             if(maskFromFile)
             {
-                std::ifstream in(mask_file);
+                std::ifstream in(maskFile);
                 if(!in)
                 {
                     StandardException exc;
                     std::stringstream exceptionStr;
-                    exceptionStr << "Cannot open mask file : " << mask_file;
+                    exceptionStr << "Cannot open mask file : " << maskFile;
                     exc.set(exceptionStr.str());
                     throw exc;
                 }
@@ -1261,7 +1268,7 @@ int main(int argc, char *argv[])
             throw exc;
         }
 
-        inDataX.read(reinterpret_cast<char*>(&(dataX[0])), NData * NData * sizeof(double));
+        inDataX.read(reinterpret_cast<char*>(&(dataX[0])), N * N * sizeof(double));
         inDataX.close();
 
         std::vector<double> dataGamma1(N * N), dataGamma2(N * N);
@@ -1292,7 +1299,7 @@ int main(int argc, char *argv[])
                         throw exc;
                     }
 
-                    inGamma1.read(reinterpret_cast<char*>(&(dataGamma1[0])), NData * NData * sizeof(double));
+                    inGamma1.read(reinterpret_cast<char*>(&(dataGamma1[0])), N * N * sizeof(double));
                     inGamma1.close();
 
 
@@ -1305,9 +1312,12 @@ int main(int argc, char *argv[])
                         throw exc;
                     }
 
-                    inGamma2.read(reinterpret_cast<char*>(&(dataGamma2[0])), NData * NData * sizeof(double));
+                    inGamma2.read(reinterpret_cast<char*>(&(dataGamma2[0])), N * N * sizeof(double));
                     inGamma2.close();
 
+                    vector2binFile("cl_data_gamma1_noisy.dat", dataGamma1);
+                    vector2binFile("cl_data_gamma2_noisy.dat", dataGamma2);
+                    vector2binFile("cl_datax2.dat", dataX);
 
                     func.setData(dataX, &dataGamma1, &dataGamma2);
 
