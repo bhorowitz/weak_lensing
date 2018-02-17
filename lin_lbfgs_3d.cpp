@@ -35,14 +35,16 @@ namespace
 class DeltaKVector2
 {
 public:
-    DeltaKVector2(int N1, int N2, int nExtra = 0) : N1_(N1), N2_(N2), c_(N1 * (N2 / 2 + 1)), q_(nExtra)
+    DeltaKVector2(int N1, int N2, int N3, int nExtra = 0) : N1_(N1), N2_(N2),N3_(N3), c_(N1 * N2* (N3 / 2 + 1)), q_(nExtra)
     {
         check(N1 > 0, "");
         check(N2 > 0, "");
+        check(N3 > 0, "");
+
         check(nExtra >= 0, "");
     }
 
-    DeltaKVector2(const DeltaKVector2& other) : N1_(other.N1_), N2_(other.N2_), c_(other.c_), q_(other.q_)
+    DeltaKVector2(const DeltaKVector2& other) : N1_(other.N1_), N2_(other.N2_),N3_(other.N3_), c_(other.c_), q_(other.q_)
     {
     }
 
@@ -54,12 +56,15 @@ public:
 
     int getN1() const { return N1_; }
     int getN2() const { return N2_; }
+    int getN3() const { return N3_; }
 
     // copy from other, multiplying with coefficient (for MPI, the correct coefficient should be passed for EVERY process)
     void copy(const DeltaKVector2& other, double c = 1.)
     {
         check(N1_ == other.N1_, "");
         check(N2_ == other.N2_, "");
+        check(N3_ == other.N3_, "");
+
         for(int i = 0; i < c_.size(); ++i)
             c_[i] = c * other.c_[i];
 
@@ -93,20 +98,28 @@ public:
         return std::sqrt(dotProduct(*this));
     }
 
+    // BEN FIX
     // dot product with another vector (for MPI, ALL the processes should get the dot product)
     double dotProduct(const DeltaKVector2& other) const
     {
-        check(N1_ == other.N1_, "");
-        check(N2_ == other.N2_, "");
+        check(N1_ == other.N1_, "Wrong Dimension of dot producted vectors");
+        check(N2_ == other.N2_, "Wrong Dimension of dot producted vectors");
+        check(N3_ == other.N3_, "Wrong Dimension of dot producted vectors");
+        // BEN FIX
+
         check(q_.size() == other.q_.size(), "");
         double res = 0;
-        for(int j = 0; j < N2_ / 2 + 1; ++j)
+        for(int k = 0; k < N3_ / 2 + 1; ++k)
         {
-            const int iMax = (j > 0 && j < N2_ / 2 ? N1_ : N1_ / 2 + 1);
-            for(int i = 0; i < iMax; ++i)
+            const int jMax = (k > 0 && k < N3_ / 2 ? N2_ : N2_ / 2 + 1);
+            for(int j = 0; j < jMax; ++j)
             {
-                const int index = i * (N2_ / 2 + 1) + j;
-                res += (std::real(c_[index]) * std::real(other.c_[index]) + std::imag(c_[index]) * std::imag(other.c_[index]));
+                const int iMax = (j > 0 && j < N2_ / 2 ? N1_ : N1_ / 2 + 1);
+                for(int i = 0; i < iMax; ++i)
+                {
+                    const int index = (i * N2_ + j) * (N3_ / 2 + 1) + k;
+                    res += (std::real(c_[index]) * std::real(other.c_[index]) + std::imag(c_[index]) * std::imag(other.c_[index]));
+                }
             }
         }
 
@@ -120,6 +133,8 @@ public:
     {
         check(N1_ == other.N1_, "");
         check(N2_ == other.N2_, "");
+        check(N3_ == other.N3_, "");
+
         check(q_.size() == other.q_.size(), "");
         for(int i = 0; i < c_.size(); ++i)
             c_[i] += c * other.c_[i];
@@ -133,6 +148,8 @@ public:
     {
         check(N1_ == other.N1_, "");
         check(N2_ == other.N2_, "");
+        check(N3_ == other.N3_, "");
+
         check(q_.size() == other.q_.size(), "");
         for(int i = 0; i < c_.size(); ++i)
             c_[i] = std::complex<double>(std::real(c_[i]) * std::real(other.c_[i]), std::imag(c_[i]) * std::imag(other.c_[i]));
@@ -146,6 +163,8 @@ public:
     {
         check(N1_ == other.N1_, "");
         check(N2_ == other.N2_, "");
+        check(N3_ == other.N3_, "");
+
         check(q_.size() == other.q_.size(), "");
         for(int i = 0; i < c_.size(); ++i)
         {
@@ -182,13 +201,15 @@ public:
     {
         check(N1_ == other.N1_, "");
         check(N2_ == other.N2_, "");
+        check(N3_ == other.N3_, "");
+
         check(q_.size() == other.q_.size(), "");
         c_.swap(other.c_);
         q_.swap(other.q_);
     }
 
 private:
-    const int N1_, N2_;
+    const int N1_, N2_, N3_;
     std::vector<std::complex<double> > c_;
     std::vector<double> q_;
 };
@@ -196,10 +217,12 @@ private:
 class DeltaKVector2Factory
 {
 public:
-    DeltaKVector2Factory(int N1, int N2, int nExtra = 0) : N1_(N1), N2_(N2), nExtra_(nExtra)
+    DeltaKVector2Factory(int N1, int N2, int N3, int nExtra = 0) : N1_(N1), N2_(N2), N3_(N3), nExtra_(nExtra)
     {
         check(N1_ > 0, "");
         check(N2_ > 0, "");
+        check(N3_ > 0, "");
+
         check(nExtra_ >= 0, "");
     }
 
@@ -207,73 +230,101 @@ public:
     // the user is in charge of deleting it
     DeltaKVector2* giveMeOne()
     {
-        return new DeltaKVector2(N1_, N2_, nExtra_);
+        return new DeltaKVector2(N1_, N2_, N3_, nExtra_);
     }
 
 private:
     const int N1_;
     const int N2_;
+    const int N3_;
+
     const int nExtra_;
+
 };
+
 
 class DeltaK2Func
 {
 public:
-    DeltaK2Func(int N1, int N2, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& mask, const std::vector<double>& pk, double L1, double L2, bool weakLensing = false, const std::vector<double> *sigma2 = NULL, const std::vector<double> *dataGamma1 = NULL, const std::vector<double> *dataGamma2 = NULL) : N1_(N1), N2_(N2), sigma_(sigma), mask_(mask), pk_(pk), deltaK_(N1 * (N2 / 2 + 1)), derivK_(N1 * (N2 / 2 + 1)), buf_(N1 * (N2 / 2 + 1)), deltaX_(N1 * N2), derivX_(N1 * N2), L1_(L1), L2_(L2), gammaK1_(N1 * (N2 / 2 + 1)), gammaK2_(N1 * (N2 / 2 + 1)), weakLensing_(weakLensing), dataK_(N1 * (N2 / 2 + 1)), dataGamma1_(N1 * N2), dataGamma2_(N1 * N2), sigma2_(sigma2 ? *sigma2 : sigma)
+    DeltaK2Func(int N1, int N2, int N3, const std::vector<double>& data, const std::vector<double>& sigma, const std::vector<double>& mask, const std::vector<double>& pk, double L1, double L2, double L3, bool weakLensing = false, const std::vector<double> *sigma2 = NULL, const std::vector<double> *dataGamma1 = NULL, const std::vector<double> *dataGamma2 = NULL) : N1_(N1), N2_(N2), N3_(N3), sigma_(sigma), mask_(mask), pk_(pk), deltaK_(N1 * N2 * (N3 / 2 + 1)), derivK_(N1 * N2 * (N3 / 2 + 1)), buf_(N1 * N2 *  (N3 / 2 + 1)), deltaX_(N1 * N2 * N3), derivX_(N1 * N2 * N3), L1_(L1), L2_(L2), L3_(L3), gammaK1_(N1 * N2 * (N3 / 2 + 1)), gammaK2_(N1 * N2 * (N3 / 2 + 1)), weakLensing_(weakLensing), dataK_(N1 * N2 * (N3 / 2 + 1)), dataGamma1_(N1 * N2 * N3), dataGamma2_(N1 * N2 * N3), sigma2_(sigma2 ? *sigma2 : sigma)
     {
         check(N1_ > 0, "");
         check(N2_ > 0, "");
+        check(N3_ > 0, "");
+
         check(L1_ > 0, "");
         check(L2_ > 0, "");
+        check(L3_ > 0, "");
+
 
         setData(data, dataGamma1, dataGamma2);
 
-        check(data_.size() == N1_ * N2_, "");
-        check(sigma_.size() == N1_ * N2_, "");
-        check(mask_.size() == N1_ * N2_, "");
-        check(pk_.size() == N1_ * (N2_ / 2 + 1), "");
+        check(data_.size() == N1_ * N2_ * N3_, "");
+        check(sigma_.size() == N1_ * N2_ * N3_, "");
+        check(mask_.size() == N1_ * N2_ * N3_, "");
+        check(pk_.size() == N1_ * N2_ * (N3_ / 2 + 1), "");
     }
 
     // generate white noise with given amplitude
     void whitenoise(int seed, DeltaKVector2* x, double amplitude)
     {
         std::vector<std::complex<double> >& v = x->get();
-        check(v.size() == N1_ * (N2_ / 2 + 1), "");
+        check(v.size() == N1_ * N2_ * (N3_ / 2 + 1), "");
         Math::GaussianGenerator g(seed, 0, amplitude);
         for(int i = 0; i < N1_; ++i)
         {
             for(int j = 1; j < N2_ / 2; ++j)
             {
-                const double re = g.generate();
-                const double im = g.generate();
-                v[i * (N2_ / 2 + 1) + j] = std::complex<double>(re, im);
+
+                for(int k = 1; j < N3_ / 2; ++j)
+                    {
+                        const double re = g.generate();
+                        const double im = g.generate();
+                        v[(i * N2_ + j) * (N3_ / 2 + 1) + k] = std::complex<double>(re, im); //BEN: probably wrong...
+                        //i * (N2_ / 2 + 1) + j
+                    }
             }
         }
+        //BEN STOPS 02/14/18 3Ding
 
         for(int i = 1; i < N1_ / 2; ++i)
         {
+            for(int j = 1; j < N2_/3; ++i)
+            {
             // j = 0
-            double re = g.generate();
-            double im = g.generate();
-            v[i *(N2_ / 2 + 1)] = std::complex<double>(re, im);
-            v[(N1_ - i) * (N2_ / 2 + 1)] = std::complex<double>(re, -im);
+
+                double re = g.generate();
+                double im = g.generate();
+                v[(i * N2_ + j) * (N3_ / 2 + 1)] = std::complex<double>(re, im);
+                v[(i * N2_ + (N2_ - j)) * (N3_ / 2 + 1)] = std::complex<double>(re, -im);
+                v[((N1_ - i) * N2_ + j) * (N3_ / 2 + 1)] = std::complex<double>(re, im);
+                v[((N1_ - i) * N2_ + (N2_ - j)) * (N3_ / 2 + 1)] = std::complex<double>(re, im);
 
             // j = N2_ / 2
-            re = g.generate();
-            im = g.generate();
-            v[i *(N2_ / 2 + 1) + N2_ / 2] = std::complex<double>(re, im);
-            v[(N1_ - i) * (N2_ / 2 + 1) + N2_ / 2] = std::complex<double>(re, -im);
+                re = g.generate();
+                im = g.generate();
+                //(i * N2_ + j) * (N3_ / 2 + 1) + k
+                v[(i * N2_ + j) * (N3_ / 2 + 1) + N3_ / 2] = std::complex<double>(re, im);
+                v[(i * N2_ + (N2_ - j)) * (N3_ / 2 + 1) + N3_ / 2] = std::complex<double>(re, im);
+                v[((N1_ - i) * N2_ + j) * (N3_ / 2 + 1) + N3_ / 2] = std::complex<double>(re, im);
+                v[((N1_ - i) * N2_ + (N2_ - i)) * (N3_ / 2 + 1) + N3_ / 2] = std::complex<double>(re, im);
+
+            }
         }
 
-        v[0] = g.generate(); // (0, 0)
-        v[N1_ / 2 * (N2_ / 2 + 1)] = g.generate(); // (N1_ / 2, 0)
-        v[N2_ / 2] = g.generate(); // (0, N2_ / 2)
-        v[N1_ / 2 * (N2_ / 2 + 1) + N2_ / 2] = g.generate(); // (N1_ / 2, N2_ / 2)
+        v[0] = g.generate(); // (0, 0, 0)
+        v[N3_ / 2] = g.generate();// (0, 0, 1)
+        v[(N2_ / 2) * (N3_ / 2 + 1) + N3_ / 2] = g.generate();// (0, 1, 1)
+        v[(N1_ / 2 * N2_) * (N3_ / 2 + 1) + N3_ / 2] = g.generate();// (1, 0, 1)
+        v[(N1_ / 2 * N2_ + N2_ / 2) * (N3_ / 2 + 1) + N3_ / 2] = g.generate();// (1, 1, 1)
+        v[(N2_ / 2) * (N3_ / 2 + 1)] = g.generate();// (0, 1, 0)
+        v[(N1_ / 2 * N2_) * (N3_ / 2 + 1)] = g.generate();// (1, 0, 0)
+        v[(N1_ / 2 * N2_ + N2_ / 2) * (N3_ / 2 + 1)] = g.generate();// (1, 1, 0)
     }
 
     void setData(const std::vector<double>& data, const std::vector<double> *dataGamma1 = NULL, const std::vector<double> *dataGamma2 = NULL)
     {
-        check(data.size() == N1_ * N2_, "");
+        check(data.size() == N1_ * N2_ * N3_, "");
         data_ = data;
         if(weakLensing_)
         {
@@ -289,9 +340,9 @@ public:
 
     void set(const DeltaKVector2& x)
     {
-        check(x.get().size() == N1_ * (N2_ / 2 + 1), "");
+        check(x.get().size() == N1_ * N2_*(N3_ / 2 + 1), "");
         deltaK_ = x.get();
-        deltaK2deltaX(N1_, N2_, deltaK_, &deltaX_, L1_, L2_, &buf_, true);
+        deltaK2deltaX(N1_, N2_,N3_, deltaK_, &deltaX_, L1_, L2_,L3_, &buf_, true);
         if(weakLensing_)
             calculateWeakLensingData(deltaK_, &deltaGamma1_, &deltaGamma2_);
 
@@ -311,11 +362,11 @@ public:
     double value()
     {
         double r = 0;
-        check(data_.size() == N1_ * N2_, "");
-        check(deltaX_.size() == N1_ * N2_, "");
-        check(sigma_.size() == N1_ * N2_, "");
-        check(mask_.size() == N1_ * N2_, "");
-        for(int i = 0; i < N1_ * N2_; ++i)
+        check(data_.size() == N1_ * N2_* N3_, "");
+        check(deltaX_.size() == N1_ * N2_ * N3_, "");
+        check(sigma_.size() == N1_ * N2_ * N3_, "");
+        check(mask_.size() == N1_ * N2_ * N3_, "");
+        for(int i = 0; i < N1_ * N2_ * N3_; ++i)
         {
             const double s = sigma_[i];
             check(s > 0, "");
@@ -359,15 +410,16 @@ public:
 #ifdef COSMO_MPI
         CosmoMPI::create().reduce(&r, &total, 1, CosmoMPI::DOUBLE, CosmoMPI::SUM);
 #endif
-        return r + priorK(N1_, N2_, pk_, deltaK_);
+        return r + priorK(N1_, N2_, N3_, pk_, deltaK_);
     }
 
     void derivative(DeltaKVector2 *res)
     {
         check(res->getN1() == N1_, "");
         check(res->getN2() == N2_, "");
+        check(res->getN3() == N3_, "");
 
-        priorKDeriv(N1_, N2_, pk_, deltaK_, &(res->get()));
+        priorKDeriv(N1_, N2_, N3_, pk_, deltaK_, &(res->get()));
 
         std::vector<double>& qDeriv = res->getExtra();
         check(qDeriv.size() == extra_.size(), "");
@@ -375,12 +427,12 @@ public:
         for(int i = 0; i < qDeriv.size(); ++i)
             qDeriv[i] = 0;
 
-        check(derivX_.size() == N1_ * N2_, "");
-        check(data_.size() == N1_ * N2_, "");
-        check(deltaX_.size() == N1_ * N2_, "");
-        check(sigma_.size() == N1_ * N2_, "");
-        check(sigma2_.size() == N1_ * N2_, "");
-        check(mask_.size() == N1_ * N2_, "");
+        check(derivX_.size() == N1_ * N2_*N3_, "");
+        check(data_.size() == N1_ * N2_*N3_, "");
+        check(deltaX_.size() == N1_ * N2_*N3_, "");
+        check(sigma_.size() == N1_ * N2_*N3_, "");
+        check(sigma2_.size() == N1_ * N2_*N3_, "");
+        check(mask_.size() == N1_ * N2_*N3_, "");
         if(weakLensing_)
         {
             // gamma1
@@ -456,34 +508,46 @@ public:
             fftw_execute(fwdPlan2);
             fftw_destroy_plan(fwdPlan2);
 
-            for(int i = 0; i < N1_ * (N2_ / 2 + 1); ++i)
+            for(int i = 0; i < N1_ * N2_* (N3_ / 2 + 1); ++i)
                 derivK_[i] *= (2.0 / (L1_ * L2_));
 
             // elements that don't have conjugate (i.e the real ones) should only count once
-            derivK_[0] /= 2; // (0, 0)
-            derivK_[N1_ / 2 * (N2_ / 2 + 1)] /= 2; // (N1/2, 0)
-            derivK_[N2_ / 2] /= 2; // (0, N2/2)
-            derivK_[N1_ /2 * (N2_ / 2 + 1) + N2_ / 2] /= 2; // (N1/2, N2/2)
+         //   derivK_[0] /= 2; // (0, 0)
+         //   derivK_[N1_ / 2 * (N2_ / 2 + 1)] /= 2; // (N1/2, 0)
+         //   derivK_[N2_ / 2] /= 2; // (0, N2/2)
+         //   derivK_[N1_ /2 * (N2_ / 2 + 1) + N2_ / 2] /= 2; // (N1/2, N2/2)
+
+        derivK_[0] /= 2; // (0, 0, 0)
+        derivK_[N3_ / 2] /= 2;// (0, 0, 1)
+        derivK_[(N2_ / 2) * (N3_ / 2 + 1) + N3_ / 2] /= 2;// (0, 1, 1)
+        derivK_[(N1_ / 2 * N2_) * (N3_ / 2 + 1) + N3_ / 2] /= 2;// (1, 0, 1)
+        derivK_[(N1_ / 2 * N2_ + N2_ / 2) * (N3_ / 2 + 1) + N3_ / 2] /= 2;// (1, 1, 1)
+        derivK_[(N2_ / 2) * (N3_ / 2 + 1)] /= 2;// (0, 1, 0)
+        derivK_[(N1_ / 2 * N2_) * (N3_ / 2 + 1)] /= 2;// (1, 0, 0)
+        derivK_[(N1_ / 2 * N2_ + N2_ / 2) * (N3_ / 2 + 1)] /= 2;// (1, 1, 0)
+
 
             check(derivK_.size() == res->get().size(), "");
             for(int i = 0; i < N1_; ++i)
             {
-                for(int j = 0; j < N2_ / 2 + 1; ++j)
+                for(int j = 0; j < N2_; ++j)
                 {
-                    const int index = i * (N2_ / 2 + 1) + j;
-                    if(index == 0)
-                        continue;
-                    
-                    double c2 = 0, s2 = 0;
-                    getC2S2(N1_, N2_, L1_, L2_, i, j, &c2, &s2);
+                    for(int k = 0; j < N3_ / 2 + 1; ++k)
+                    {
+                        const int index = (i * N2_ + j) * (N3_ / 2 + 1) + k;
+                        if(index == 0)
+                            continue;
 
-                    res->get()[index] += derivK_[index] * s2;
+                        double c2 = 0, s2 = 0;
+                        getC2S2(N1_, N2_, N3_, L1_, L2_, L3_, i, j, k, &c2, &s2);
+
+                        res->get()[index] += derivK_[index] * s2;
                 }
             }
         }
         else
         {
-            for(int i = 0; i < N1_ * N2_; ++i)
+            for(int i = 0; i < N1_ * N2_ * N3_; ++i)
             {
                 const double s = sigma_[i];
                 check(s > 0, "");
@@ -500,20 +564,24 @@ public:
                     qDeriv[j] += mask_[i] * derivX_[i] * extra_[j][i];
             }
 
-            check(derivK_.size() == N1_ * (N2_ / 2 + 1), "");
-            fftw_plan fwdPlan = fftw_plan_dft_r2c_2d(N1_, N2_, &(derivX_[0]), reinterpret_cast<fftw_complex*>(&(derivK_[0])), FFTW_ESTIMATE);
+            check(derivK_.size() == N1_ * N2_ * (N3_ / 2 + 1), "");
+            fftw_plan fwdPlan = fftw_plan_dft_r2c_2d(N1_, N2_, N3_, &(derivX_[0]), reinterpret_cast<fftw_complex*>(&(derivK_[0])), FFTW_ESTIMATE);
             check(fwdPlan, "");
             fftw_execute(fwdPlan);
             fftw_destroy_plan(fwdPlan);
 
-            for(int i = 0; i < N1_ * (N2_ / 2 + 1); ++i)
-                derivK_[i] *= (2.0 / (L1_ * L2_));
+            for(int i = 0; i < N1_ * N2_ * (N3_ / 2 + 1); ++i)
+                derivK_[i] *= (2.0 / (L1_ * L2_ * L3_));
 
             // elements that don't have conjugate (i.e the real ones) should only count once
-            derivK_[0] /= 2; // (0, 0)
-            derivK_[N1_ / 2 * (N2_ / 2 + 1)] /= 2; // (N1/2, 0)
-            derivK_[N2_ / 2] /= 2; // (0, N2/2)
-            derivK_[N1_ /2 * (N2_ / 2 + 1) + N2_ / 2] /= 2; // (N1/2, N2/2)
+        derivK_[0] /= 2; // (0, 0, 0)
+        derivK_[N3_ / 2] /= 2;// (0, 0, 1)
+        derivK_[(N2_ / 2) * (N3_ / 2 + 1) + N3_ / 2] /= 2;// (0, 1, 1)
+        derivK_[(N1_ / 2 * N2_) * (N3_ / 2 + 1) + N3_ / 2] /= 2;// (1, 0, 1)
+        derivK_[(N1_ / 2 * N2_ + N2_ / 2) * (N3_ / 2 + 1) + N3_ / 2] /= 2;// (1, 1, 1)
+        derivK_[(N2_ / 2) * (N3_ / 2 + 1)] /= 2;// (0, 1, 0)
+        derivK_[(N1_ / 2 * N2_) * (N3_ / 2 + 1)] /= 2;// (1, 0, 0)
+        derivK_[(N1_ / 2 * N2_ + N2_ / 2) * (N3_ / 2 + 1)] /= 2;// (1, 1, 0)
 
             check(derivK_.size() == res->get().size(), "");
             for(int i = 0; i < derivK_.size(); ++i)
@@ -560,8 +628,12 @@ public:
 private:
     const int N1_;
     const int N2_;
+    const int N3_;
+
     const double L1_;
     const double L2_;
+    const double L3_;
+
     std::vector<double> data_;
     const std::vector<double> sigma_;
     const std::vector<double> sigma2_;
@@ -587,12 +659,12 @@ private:
 bool testFunctionDerivs(DeltaK2Func &func, int N, int nExtra, const std::vector<double>& pk, double epsilon, int testSeed)
 {
     output_screen("Testing function derivatives..." << std::endl);
-    DeltaKVector2 testK(N, N, nExtra);
-    DeltaKVector2 testKPert(N, N, nExtra);
+    DeltaKVector2 testK(N, N, N,nExtra);
+    DeltaKVector2 testKPert(N, N, N, nExtra);
 
-    std::vector<double> realBuffer(N * N);
+    std::vector<double> realBuffer(N * N * N);
 
-    generateDeltaK(N, N, pk, &(testK.get()), testSeed, &realBuffer);
+    generateDeltaK(N, N, N, pk, &(testK.get()), testSeed, &realBuffer);
     func.set(testK);
     const double val = func.value();
     DeltaKVector2 derivsK(N, N, nExtra);
@@ -601,42 +673,45 @@ bool testFunctionDerivs(DeltaK2Func &func, int N, int nExtra, const std::vector<
     bool result = true;
     for(int i = 0; i < N; ++i)
     {
-        //output_screen("SKIPPING THIS TEST!!!" << std::endl);
-        //break;
+        output_screen("SKIPPING THIS TEST!!!" << std::endl);
+        break;
 
-        for(int j = 0; j < N / 2 + 1; ++j)
+        for(int j = 0; j < N; ++j)
         {
-            const int index = i * (N / 2 + 1) + j;
-            check(pk[index] > 0, "");
-            testKPert.copy(testK);
-            testKPert.get()[index] += epsilon * std::complex<double>(1.0, 0.0);
+
+            for(int k = 0; k < N / 2 + 1; ++k)
+            {
+                const int index = (i * N + j) * (N / 2 + 1) + k;
+                check(pk[index] > 0, "");
+                testKPert.copy(testK);
+                testKPert.get()[index] += epsilon * std::complex<double>(1.0, 0.0);
             // certain elements have redundancy, i.e. their conjugates are in the array
-            if((j == 0 || j == N / 2) && (i != 0 && i != N / 2))
-            {
-                const int index1 = (N - i) * (N / 2 + 1) + j;
-                testKPert.get()[index1] += epsilon * std::complex<double>(1.0, 0.0);
-            }
-            func.set(testKPert);
-            double val2 = func.value();
-            double numDeriv = (val2 - val) / epsilon;
-            if(!Math::areEqual(numDeriv, std::real(derivsK.get()[index]), 1e-1))
-            {
-                output_screen("FAIL: index (" << i << ", " << j << ") real part. Numerical derivative = " << numDeriv << ", analytic = " << std::real(derivsK.get()[index]) << "." << std::endl);
-                result = false;
-            }
+                if((j == 0 || j == N / 2) && (i != 0 && i != N / 2))
+                {
+                    const int index1 = (N - i) * (N / 2 + 1) + j;
+                    testKPert.get()[index1] += epsilon * std::complex<double>(1.0, 0.0);
+                }
+                func.set(testKPert);
+                double val2 = func.value();
+                double numDeriv = (val2 - val) / epsilon;
+                if(!Math::areEqual(numDeriv, std::real(derivsK.get()[index]), 1e-1))
+                {
+                    output_screen("FAIL: index (" << i << ", " << j << ") real part. Numerical derivative = " << numDeriv << ", analytic = " << std::real(derivsK.get()[index]) << "." << std::endl);
+                    result = false;
+                }
 
             // if it's real
-            if((i == 0 && (j == 0 || j == N / 2)) || (i == N / 2 && (j == 0 || j == N / 2)))
-                continue;
+                if((i == 0 && (j == 0 || j == N / 2)) || (i == N / 2 && (j == 0 || j == N / 2)))
+                    continue;
 
-            testKPert.copy(testK);
-            testKPert.get()[index] += epsilon * std::complex<double>(0.0, 1.0);
-            if(j == 0 || j == N / 2)
-            {
-                const int index1 = (N - i) * (N / 2 + 1) + j;
-                testKPert.get()[index1] -= epsilon * std::complex<double>(0.0, 1.0);
-            }
-            func.set(testKPert);
+                testKPert.copy(testK);
+                testKPert.get()[index] += epsilon * std::complex<double>(0.0, 1.0);
+                if(j == 0 || j == N / 2)
+                {
+                    const int index1 = (N - i) * (N / 2 + 1) + j;
+                    testKPert.get()[index1] -= epsilon * std::complex<double>(0.0, 1.0);
+                }
+                func.set(testKPert);
             val2 = func.value();
             numDeriv = (val2 - val) / epsilon;
             if(!Math::areEqual(numDeriv, std::imag(derivsK.get()[index]), 1e-1))
@@ -644,6 +719,7 @@ bool testFunctionDerivs(DeltaK2Func &func, int N, int nExtra, const std::vector<
                 output_screen("FAIL: index (" << i << ", " << j << ") imaginary part. Numerical derivative = " << numDeriv << ", analytic = " << std::imag(derivsK.get()[index]) << "." << std::endl);
                 result = false;
             }
+        }
         }
     }
 
@@ -690,7 +766,7 @@ public:
 
         std::vector<double> deltaX;
         std::vector<std::complex<double> > deltaK = x.get();
-        deltaK2deltaX(N_, N_, deltaK, &deltaX, L_, L_, NULL, true);
+        deltaK2deltaX(N_, N_, N_, deltaK, &deltaX, L_, L_, L_, NULL, true);
         std::stringstream fileNameStr;
         if(cg_)
             fileNameStr << "cg";
@@ -707,7 +783,7 @@ public:
             exc.set(exceptionStr);
             throw exc;
         }
-        out.write(reinterpret_cast<char*>(&(deltaX[0])), N_ * N_ * sizeof(double));
+        out.write(reinterpret_cast<char*>(&(deltaX[0])), N_ * N_ * N_ * sizeof(double));
         out.close();
 
         // Writing out PS for each step
@@ -715,7 +791,7 @@ public:
         std::stringstream fileNameStr_ps;
 
         std::vector<double> ps, psk;
-        power(N_, N_, L_, L_, deltaK, &psk, &ps);
+        power(N_, N_, N_, L_, L_, L_, deltaK, &psk, &ps);
         std::stringstream psFileNameStr;
         psFileNameStr << "lbfgs_ps_" << iter << ".txt";
         vector2file(psFileNameStr.str().c_str(), ps);
@@ -776,7 +852,7 @@ public:
                 exc.set(exceptionStr);
                 throw exc;
             }
-            out.write(reinterpret_cast<char*>(&(deltaX[0])), N_ * N_ * sizeof(double));
+            out.write(reinterpret_cast<char*>(&(deltaX[0])), N_ * N_ * N_ * sizeof(double));
             out.close();
         }
 
@@ -1034,14 +1110,14 @@ int main(int argc, char *argv[])
 
         std::vector<int> bins;
         std::vector<double> kBinVals;
-        const int nBins = powerSpectrumBins(N, N, L, L, &bins, &kBinVals);
-        check(bins.size() == N * (N / 2 + 1), "");
-        check(kBinVals.size() == nBins, "");
+        const int nBins = powerSpectrumBins(N, N, N, L, L, L, &bins, &kBinVals);
+        check(bins.size() == N * N * (N / 2 + 1), "");
+        check(kBinVals.size() == nBins, "nbins value wrong?");
         vector2file("k_bins.txt", kBinVals);
 
         std::vector<int> binsFull;
-        const int nBinsFull = powerSpectrumBinsFull(N, N, L, L, &binsFull);
-        check(nBinsFull == nBins, "");
+        const int nBinsFull = powerSpectrumBinsFull(N, N,N, L, L,L, &binsFull);
+        check(nBinsFull == nBins, "nbins full not equal to nbins");
 
         std::vector<double> pBinVals(nBins);
         for(int i = 0; i < nBins; ++i)
@@ -1049,7 +1125,7 @@ int main(int argc, char *argv[])
         vector2file("actual_ps.txt", pBinVals);
 
         std::vector<double> pk;
-        discretePowerSpectrum(N, N, L, L, bins, pBinVals, &pk);
+        discretePowerSpectrum(N, N, N, L, L, L, bins, pBinVals, &pk);
 
         std::vector<double> fiducialBinVals = pBinVals;
 
@@ -1061,14 +1137,14 @@ int main(int argc, char *argv[])
         vector2file("fiducial_ps.txt", fiducialBinVals);
 
         std::vector<double> pkFiducial;
-        discretePowerSpectrum(N, N, L, L, bins, fiducialBinVals, &pkFiducial);
+        discretePowerSpectrum(N, N, N, L, L, L, bins, fiducialBinVals, &pkFiducial);
 
-        std::vector<double> realBuffer(N * N);
-        std::vector<std::complex<double> > complexBuffer(N * (N / 2 + 1));
+        std::vector<double> realBuffer(N * N * N);
+        std::vector<std::complex<double> > complexBuffer(N * N*(N / 2 + 1));
 
         std::vector<std::complex<double> > deltaK;
         int seed = 100;
-        generateDeltaK(N, N, pk, &deltaK, seed++, &realBuffer);
+        generateDeltaK(N, N, N, pk, &deltaK, seed++, &realBuffer);
 
         // including power beyond k_max for aliasing
         const int NHigher = N * 2;
@@ -1086,30 +1162,12 @@ int main(int argc, char *argv[])
 
         if(includeHigherPower)
         {
-            output_screen("Including higher power..." << std::endl);
+            output_screen("HIGHER POWER NOT IMPLEMENTED" << std::endl);
 
-            nBinsHigher = powerSpectrumBins(NHigher, NHigher, L, L, &binsHigher, &kBinValsHigher);
-            pBinValsHigher.resize(nBinsHigher);
-            for(int i = 0; i < nBinsHigher; ++i)
-            {
-                if(kBinValsHigher[i] > kBinVals.back())
-                    pBinValsHigher[i] = psToUse->evaluate(kBinValsHigher[i]);
-            }
-            vector2file("ps_higher.txt", pBinValsHigher);
-            discretePowerSpectrum(NHigher, NHigher, L, L, binsHigher, pBinValsHigher, &pkHigher);
-            generateDeltaK(NHigher, NHigher, pkHigher, &deltaKHigher, seed++);
-            deltaK2deltaX(NHigher, NHigher, deltaKHigher, &deltaXHigher, L, L);
-            downgrade(NHigher, NHigher, deltaXHigher, N, N, &deltaXLower);
-            vector2binFile("deltax2_higher.dat", deltaXLower);
-            deltaX2deltaK(N, N, deltaXLower, &deltaKLower, L, L);
-            check(deltaKLower.size() == deltaK.size(), "");
-
-            for(int i = 0; i < deltaK.size(); ++i)
-                deltaK[i] += deltaKLower[i];
         }
         std::vector<double> deltaX;
-        deltaK2deltaX(N, N, deltaK, &deltaX, L, L, &complexBuffer, true);
-        check(deltaX.size() == N * N, "");
+        deltaK2deltaX(N, N, N, deltaK, &deltaX, L, L, &complexBuffer, true);
+        check(deltaX.size() == N * N* N, "DeltaX size check");
 
         if(N == NData && dataIsOriginal)
         {
@@ -1119,10 +1177,10 @@ int main(int argc, char *argv[])
 
         vector2binFile("deltax2.dat", deltaX);
         std::vector<double> deltaPS, deltaPSK;
-        power(N, N, L, L, deltaK, &deltaPSK, &deltaPS);
+        power(N, N, N, L,L, L, deltaK, &deltaPSK, &deltaPS);
         vector2file("delta_ps.txt", deltaPS);
 
-        std::vector<double> sigmaNoise(N * N, noiseVal);
+        std::vector<double> sigmaNoise(N * N * N, noiseVal);
 
         // make the noise different in each pixel
         if(varyingNoise)
@@ -1131,10 +1189,14 @@ int main(int argc, char *argv[])
             {
                 for(int j = 0; j < N; ++j)
                 {
-                    //currently a 2 x 4 grid of "bubbles" of noise
-                    const double f1 = std::sin(2 * Math::pi * double(i) / N);
-                    const double f2 = std::cos(4 * Math::pi * double(j) / N);
-                    sigmaNoise[i * N + j] *= (f1 * f1 * f2 * f2 + 0.1);
+                    for(int k = 0; k<N;++k)
+                    {
+                    //currently a 2 x 4 grid of "bubbles" of noise with increase in k (i.e. z) direction
+                        const double f1 = std::sin(2 * Math::pi * double(i) / N);
+                        const double f2 = std::cos(4 * Math::pi * double(j) / N);
+                        const double f3 = std::exp(double(k) / double(N))
+                        sigmaNoise[(i * N + j) * N + k] *= (f1 * f1 * f2 * f2 + 0.1)*f3;
+                    }
                 }
             }
         }
@@ -1143,10 +1205,10 @@ int main(int argc, char *argv[])
 
         int noiseSeed = 200;
         Math::GaussianGenerator noiseGen(noiseSeed, 0, 1);
-        std::vector<double> noiseX(N * N);
+        std::vector<double> noiseX(N * N * N);
         //double noiseXMean = 0;
         //generate noise for each pixel
-        for(int i = 0; i < N * N; ++i)
+        for(int i = 0; i < N * N * N; ++i)
         {
             noiseX[i] = noiseGen.generate() * sigmaNoise[i];
             //noiseXMean += noiseX[i];
@@ -1158,13 +1220,13 @@ int main(int argc, char *argv[])
             noiseX[i] -= noiseXMean;
         */
         //add noise to each pixel
-        std::vector<double> dataX(N * N);
-        for(int i = 0; i < N * N; ++i)
+        std::vector<double> dataX(N * N * N);
+        for(int i = 0; i < N * N * N; ++i)
             dataX[i] = deltaX[i] + noiseX[i];
 
         vector2binFile("datax2.dat", dataX);
 
-        std::vector<double> mask(N * N, 1);
+        std::vector<double> mask(N * N * N, 1);
         // mask out some stuff
         if(maskStuff)
         {
@@ -1172,16 +1234,18 @@ int main(int argc, char *argv[])
             {
                 for(int j = 0; j < N; ++j)
                 {
-                    //circular mask pattern with center cutout
-                    const int di = i - N / 2;
-                    const int dj = j - N / 2;
-                    if(di * di + dj * dj < (N / 8) * (N / 8))
-                        mask[i * N + j] = 0;
-
-                    if(i < N / 10 || i > N - N / 10 || j < N / 10 || j > N - N / 10)
-                        if(di * di + dj * dj > 0.9 * (N / 2) * (N / 2))
+                    for(int k = 0; k<N; ++ k)
+                    {
+                    //circular mask pattern with center cutout, no k dependence
+                        const int di = i - N / 2;
+                        const int dj = j - N / 2;
+                        if(di * di + dj * dj < (N / 8) * (N / 8))
                             mask[i * N + j] = 0;
 
+                        if(i < N / 10 || i > N - N / 10 || j < N / 10 || j > N - N / 10)
+                            if(di * di + dj * dj > 0.9 * (N / 2) * (N / 2))
+                                mask[i * N + j) * N + k] = 0;
+                    }
                 }
             }
 
@@ -1203,7 +1267,10 @@ int main(int argc, char *argv[])
                     std::stringstream str(s);
                     for(int j = 0; j < N; ++j)
                     {
-                        str >> mask[i * N + j];
+                        for(int k = 0; k < N; ++k)
+                        {
+                            str >> mask[i * N + j) * N + k];
+                        }
                     }
                 }
                 in.close();
@@ -1212,7 +1279,7 @@ int main(int argc, char *argv[])
 
         if(maskInNoise)
         {
-            for(int i = 0; i < N * N; ++i)
+            for(int i = 0; i < N * N * N; ++i)
             {
                 if(mask[i] == 0)
                 {
@@ -1225,11 +1292,11 @@ int main(int argc, char *argv[])
 
         vector2binFile("mask2.dat", mask);
 
-        std::vector<double> dataGamma1(N * N), dataGamma2(N * N);
+        std::vector<double> dataGamma1(N * N), dataGamma2(N * N); //will eventually just have projected gamma fields...
         DeltaK2Func func(N, N, dataX, sigmaNoise, mask, pkFiducial, L, L, weakLensing, &sigmaNoise, &dataGamma1, &dataGamma2);
         if(weakLensing or weakLensingMapOnly)
         {
-            output_screen("Initializing WL data..." << std::endl);
+            output_screen("Not implemented for 3d!" << std::endl);
 
             func.calculateWeakLensingData(deltaK, &dataGamma1, &dataGamma2);
             vector2binFile("data_gamma1.dat", dataGamma1);
@@ -1256,7 +1323,7 @@ int main(int argc, char *argv[])
         const int nExtra = 0;
         std::vector<std::vector<double> > extraData(nExtra);
         for(int i = 0; i < nExtra; ++i)
-            extraData[i].resize((weakLensing ? 2 : 1) * N * N, 1e-5);
+            extraData[i].resize((weakLensing ? 2 : 1) * N * N * N, 1e-5);
 
 
         /*
@@ -1309,7 +1376,7 @@ int main(int argc, char *argv[])
 
         std::vector<double> qSigma(nExtra, 1e6);
 
-        DeltaKVector2Factory factory(N, N, nExtra);
+        DeltaKVector2Factory factory(N, N,N, nExtra);
 
         func.setExtra(extraData, qSigma);
 
@@ -1317,7 +1384,7 @@ int main(int argc, char *argv[])
             testFunctionDerivs(func, N, nExtra, pkFiducial, 1e-1, 300);
 
         // let's do lbfgs! (or other optimization routine!)
-        DeltaKVector2 starting(N, N, nExtra);
+        DeltaKVector2 starting(N, N, N,nExtra);
         starting.setToZero();
         if(randomStart){
             output_screen("Randomizing Starting Point..." << std::endl);
@@ -1330,17 +1397,20 @@ int main(int argc, char *argv[])
             DeltaKVector2 masses(N, N, nExtra);
             for(int i = 0; i < N; ++i)
             {
-                for(int j = 0; j < N / 2 + 1; ++j)
+                for(int j = 0; j < N; ++j)
                 {
-                    const int index = i * (N / 2 + 1) + j;
-                    bool hasImag = true;
-                    if((j == 0 || j == N / 2) && (i == 0 || i == N / 2))
-                        hasImag = false;
+                    for(int k = 0; k < N / 2 + 1; ++k)
+                    {
+                        const int index = (i * N + j) * (N / 2 + 1) + k;
+                        bool hasImag = true;
+                        if((j == 0 || j == N / 2) && (i == 0 || i == N / 2) && (k == 0 || k == N / 2))
+                            hasImag = false;
 
-                    const double re = hmcMassToPkRatio / pkFiducial[index];
-                    const double im = (hasImag ? re : 0.0);
+                        const double re = hmcMassToPkRatio / pkFiducial[index];
+                        const double im = (hasImag ? re : 0.0);
 
-                    masses.get()[index] = std::complex<double>(re, im);
+                        masses.get()[index] = std::complex<double>(re, im);
+                    }
                 }
             }
             for(int i = 0; i < nExtra; ++i)
@@ -1390,7 +1460,7 @@ int main(int argc, char *argv[])
 
         output_screen("Now trying to estimate the noise bias!" << std::endl);
         std::vector<int> binCount(nBins, 0);
-        for(int i = 0; i < N * N; ++i)
+        for(int i = 0; i < N * N * N; ++i)
         {
             const int l = binsFull[i];
             check(l >= 0 && l < nBins, "");
@@ -1399,7 +1469,7 @@ int main(int argc, char *argv[])
         vector2file("bin_count.txt", binCount);
 
         std::vector<int> binCountHalf(nBins, 0);
-        for(int i = 0; i < N * (N / 2 + 1); ++i)
+        for(int i = 0; i < N * N* (N / 2 + 1); ++i)
         {
             const int l = bins[i];
             if(l < 0)
@@ -1411,25 +1481,25 @@ int main(int argc, char *argv[])
 
         noiseSeed = 20000;
 
-        std::vector<double> noiseXNew(N * N), noiseXNew1(N * N);
-        DeltaKVector2 gradNoise(N, N, nExtra);
+        std::vector<double> noiseXNew(N * N* N), noiseXNew1(N * N * N);
+        DeltaKVector2 gradNoise(N, N, N, nExtra);
         std::vector<double> bEstimated(nBins, 0);
-        std::vector<std::complex<double> > noiseKNew(N * (N / 2 + 1));
-        std::vector<double> noiseAvg(N * N);
+        std::vector<std::complex<double> > noiseKNew(N * N * (N / 2 + 1));
+        std::vector<double> noiseAvg(N * N * N);
 
         std::vector<std::vector<std::complex<double> > > noiseRealizations;
 
-        std::vector<std::complex<double> > deltaKSum(N * (N / 2 + 1));
-        std::vector<std::complex<double> > deltaKDiff(N * (N / 2 + 1));
-        std::vector<std::complex<double> > deltaKFisherNew(N * (N / 2 + 1));
-        std::vector<double> deltaXSum(N * N), deltaXDiff(N * N), deltaGamma1Diff(N * N), deltaGamma2Diff(N * N);
+        std::vector<std::complex<double> > deltaKSum(N * N * (N / 2 + 1));
+        std::vector<std::complex<double> > deltaKDiff(N * N * (N / 2 + 1));
+        std::vector<std::complex<double> > deltaKFisherNew(N * N * (N / 2 + 1));
+        std::vector<double> deltaXSum(N * N* N), deltaXDiff(N * N* N), deltaGamma1Diff(N * N* N), deltaGamma2Diff(N * N* N);
 
         Math::Matrix<double> fisherEst(nBins, nBins, 0);
-        std::vector<std::complex<double> > deltaKTotal(N * (N / 2 + 1));
-        std::vector<double> deltaXTotal(N * N);
+        std::vector<std::complex<double> > deltaKTotal(N * N * (N / 2 + 1));
+        std::vector<double> deltaXTotal(N * N * N);
         std::vector<double> deltaSumGamma1(N * N), deltaSumGamma2(N * N);
         std::vector<double> deltaTotalGamma1(N * N), deltaTotalGamma2(N * N);
-        std::vector<double> deltaXFisherNew(N * N);
+        std::vector<double> deltaXFisherNew(N * N * N);
         std::vector<double> deltaGamma1FisherNew(N * N);
         std::vector<double> deltaGamma2FisherNew(N * N);
 
@@ -1466,45 +1536,17 @@ int main(int argc, char *argv[])
         std::vector<std::vector<std::complex<double> > > fisherNewSignals, fisherNewMins;
         for(int c = 0; c < simCount; ++c)
         {
-            generateWhiteNoise(N, N, noiseSeed++, noiseXNew, z2, normalizePower, normalizePerBin);
+            generateWhiteNoise(N, N, N, noiseSeed++, noiseXNew, z2, normalizePower, normalizePerBin);
             if(weakLensing)
                 generateWhiteNoise(N, N, noiseSeed++, noiseXNew1, z2, normalizePower, normalizePerBin);
             
-            for(int i = 0; i < N * N; ++i)
+            for(int i = 0; i < N * N * N; ++i)
             {
                 noiseXNew[i] *= sigmaNoise[i];
                 if(weakLensing)
                     noiseXNew1[i] *= sigmaNoise[i];
             }
 
-            if(includeHigherPower)
-            {
-                generateDeltaK(NHigher, NHigher, pkHigher, &deltaKHigher, noiseSeed++);
-                std::vector<double> deltaXHigher;
-                deltaK2deltaX(NHigher, NHigher, deltaKHigher, &deltaXHigher, L, L);
-                std::vector<double> deltaXLower;
-                downgrade(NHigher, NHigher, deltaXHigher, N, N, &deltaXLower);
-                std::vector<std::complex<double> > deltaKLower;
-                deltaX2deltaK(N, N, deltaXLower, &deltaKLower, L, L);
-                check(deltaKLower.size() == deltaK.size(), "");
-
-                if(weakLensing)
-                {
-                    std::vector<double> deltaGamma1Lower(N * N), deltaGamma2Lower(N * N);
-                    func.calculateWeakLensingData(deltaKLower, &deltaGamma1Lower, &deltaGamma2Lower);
-
-                    for(int i = 0; i < N * N; ++i)
-                    {
-                        noiseXNew[i] += deltaGamma1Lower[i];
-                        noiseXNew1[i] += deltaGamma2Lower[i];
-                    }
-                }
-                else
-                {
-                    for(int i = 0; i < N * N; ++i)
-                        noiseXNew[i] += deltaXLower[i];
-                }
-            }
 
             if(weakLensing)
                 func.setData(dataX, &noiseXNew, &noiseXNew1);
@@ -1519,18 +1561,20 @@ int main(int argc, char *argv[])
 
             noiseRealizations.push_back(deltaKNoiseNew.get());
 
-            for(int i = 0; i < N * N; ++i)
+            for(int i = 0; i < N * N * N; ++i)
             {
                 const int l = binsFull[i];
                 check(l >= 0 && l < nBins, "");
-                int ix = i / N, iy = i % N;
-                if(iy > N / 2)
+                int ix = i / N, iy = i % N, iz = i % N;
+                if(iz > N / 2)
                 {
+                    if(iy != 0 && iy != N / 2)
+                        iy = N - iy;
                     if(ix != 0 && ix != N / 2)
                         ix = N - ix;
-                    iy = N - iy;
+                    iz = N - iz;
                 }
-                const int indexNew = ix * (N / 2 + 1) + iy;
+                const int indexNew = (ix * N + iy) * (N / 2 + 1) + iz;
                 check(indexNew >= 0 && indexNew < N * (N / 2 + 1), "");
                 std::complex<double> s(0, 0);
                 if(pkFiducial[indexNew] != 0)
@@ -1553,7 +1597,7 @@ int main(int argc, char *argv[])
 
             std::vector<double> noiseAvgThisIter = noiseAvg;
 
-            for(int i = 0; i < N * N; ++i)
+            for(int i = 0; i < N * N * N; ++i)
                 noiseAvgThisIter[i] /= (c + 1);
 
             // fisher
@@ -1582,7 +1626,7 @@ int main(int argc, char *argv[])
 
 
                 // now add noise
-                for(int i = 0; i < N * N; ++i)
+                for(int i = 0; i < N * N * N; ++i)
                 {
                     deltaXFisherNew[i] += noiseXNew[i];
                     if(weakLensing)
@@ -1608,35 +1652,39 @@ int main(int argc, char *argv[])
                 if(c % 100 == 0)
                 {
                     Math::Matrix<double> fisherMatrixNew(nBins, nBins, 0);
-                    for(int i = 0; i < N * N; ++i)
+                    for(int i = 0; i < N * N * N; ++i)
                     {
                         const int l = binsFull[i];
                         check(l >= 0 && l < nBins, "");
-                        int ix = i / N, iy = i % N;
+                        int ix = i / N, iy = i % N, iz = i % N;
                         bool iConj = false;
-                        if(iy > N / 2)
+                        if(iz > N / 2)
                         {
+                            if(iy != 0 && iy != N / 2)
+                                iy = N - iy;
                             if(ix != 0 && ix != N / 2)
                                 ix = N - ix;
                             iy = N - iy;
                             iConj = true;
                         }
-                        const int iNew = ix * (N / 2 + 1) + iy;
-                        const double p = fiducialBinVals[l] * L * L;
-                        for(int j = 0; j < N * N; ++j)
+                        const int iNew = (ix * N + iy) * (N / 2 + 1) + iz;
+                        const double p = fiducialBinVals[l] * L * L * L;
+                        for(int j = 0; j < N * N * N; ++j)
                         {
                             const int l1 = binsFull[j];
                             check(l1 >= 0 && l1 < nBins, "");
-                            int jx = j / N, jy = j % N;
+                            int jx = j / N, jy = j % N, jz = j % N;
                             bool jConj = false;
-                            if(jy > N / 2)
-                            {
+                             if(jz > N / 2)
+                             {
+                                if(jy != 0 && jy != N / 2)
+                                    jy = N - jy;
                                 if(jx != 0 && jx != N / 2)
-                                    jx = N - jx;
+                                    ix = N - jx;
                                 jy = N - jy;
                                 jConj = true;
                             }
-                            const int jNew = jx * (N / 2 + 1) + jy;
+                            const int jNew = (jx * N + jy) * (N / 2 + 1) + jz;
                             std::complex<double> sum1 = 0.0;
                             double sum2 = 0;
                             for(int k = 0; k < c + 1; ++k)
@@ -1685,7 +1733,7 @@ int main(int argc, char *argv[])
             */
 
             output_screen("flag 1" << std::endl);
-            if(1==0){
+            if(1==1){
                     StandardException exc;
                     std::stringstream exceptionStr;
                     exceptionStr << "no fisher!";
