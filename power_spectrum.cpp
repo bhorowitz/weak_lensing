@@ -1462,7 +1462,7 @@ int powerSpectrumBinsFull(int N1, int N2, int N3, double L1, double L2, double L
                 const double k3 = 2 * Math::pi / L3 * kShifted;
                 const int index = (i * N2 + j) * N3 + k;
                 const double kAbs = std::sqrt(k1 * k1 + k2 * k2 + k3 * k3);
-                check(k <= kMax * 1.00001, "");
+                check(k <= kMax * 1.00001,"");
                 int bin = std::floor(k / kMax * nBins);
                 if(bin == nBins)
                     --bin;

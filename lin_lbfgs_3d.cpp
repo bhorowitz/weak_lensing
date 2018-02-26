@@ -539,12 +539,13 @@ public:
                             continue;
 
                         double c2 = 0, s2 = 0;
-                        getC2S2(N1_, N2_, N3_, L1_, L2_, L3_, i, j, k, &c2, &s2);
+                        getC2S2(N1_, N2_,  L1_, L2_,  i, j, &c2, &s2);
 
                         res->get()[index] += derivK_[index] * s2;
                 }
             }
         }
+    }
         else
         {
             for(int i = 0; i < N1_ * N2_ * N3_; ++i)
@@ -565,7 +566,7 @@ public:
             }
 
             check(derivK_.size() == N1_ * N2_ * (N3_ / 2 + 1), "");
-            fftw_plan fwdPlan = fftw_plan_dft_r2c_2d(N1_, N2_, N3_, &(derivX_[0]), reinterpret_cast<fftw_complex*>(&(derivK_[0])), FFTW_ESTIMATE);
+            fftw_plan fwdPlan = fftw_plan_dft_r2c_3d(N1_, N2_, N3_, &(derivX_[0]), reinterpret_cast<fftw_complex*>(&(derivK_[0])), FFTW_ESTIMATE);
             check(fwdPlan, "");
             fftw_execute(fwdPlan);
             fftw_destroy_plan(fwdPlan);
@@ -1166,7 +1167,7 @@ int main(int argc, char *argv[])
 
         }
         std::vector<double> deltaX;
-        deltaK2deltaX(N, N, N, deltaK, &deltaX, L, L, &complexBuffer, true);
+        deltaK2deltaX(N, N, N, deltaK, &deltaX, L, L, L, &complexBuffer, true);
         check(deltaX.size() == N * N* N, "DeltaX size check");
 
         if(N == NData && dataIsOriginal)
@@ -1194,7 +1195,7 @@ int main(int argc, char *argv[])
                     //currently a 2 x 4 grid of "bubbles" of noise with increase in k (i.e. z) direction
                         const double f1 = std::sin(2 * Math::pi * double(i) / N);
                         const double f2 = std::cos(4 * Math::pi * double(j) / N);
-                        const double f3 = std::exp(double(k) / double(N))
+                        const double f3 = std::exp(double(k) / double(N));
                         sigmaNoise[(i * N + j) * N + k] *= (f1 * f1 * f2 * f2 + 0.1)*f3;
                     }
                 }
@@ -1240,11 +1241,11 @@ int main(int argc, char *argv[])
                         const int di = i - N / 2;
                         const int dj = j - N / 2;
                         if(di * di + dj * dj < (N / 8) * (N / 8))
-                            mask[i * N + j] = 0;
+                            mask[(i * N + j) * N + k] = 0;
 
                         if(i < N / 10 || i > N - N / 10 || j < N / 10 || j > N - N / 10)
                             if(di * di + dj * dj > 0.9 * (N / 2) * (N / 2))
-                                mask[i * N + j) * N + k] = 0;
+                                mask[(i * N + j) * N + k] = 0;
                     }
                 }
             }
@@ -1269,7 +1270,7 @@ int main(int argc, char *argv[])
                     {
                         for(int k = 0; k < N; ++k)
                         {
-                            str >> mask[i * N + j) * N + k];
+                            str >> mask[(i * N + j) * N + k];
                         }
                     }
                 }
@@ -1293,7 +1294,7 @@ int main(int argc, char *argv[])
         vector2binFile("mask2.dat", mask);
 
         std::vector<double> dataGamma1(N * N), dataGamma2(N * N); //will eventually just have projected gamma fields...
-        DeltaK2Func func(N, N, dataX, sigmaNoise, mask, pkFiducial, L, L, weakLensing, &sigmaNoise, &dataGamma1, &dataGamma2);
+        DeltaK2Func func(N, N, N, dataX, sigmaNoise, mask, pkFiducial, L, L, L, weakLensing, &sigmaNoise, &dataGamma1, &dataGamma2);
         if(weakLensing or weakLensingMapOnly)
         {
             output_screen("Not implemented for 3d!" << std::endl);
